@@ -1,0 +1,24 @@
+{
+    "port": "COM3",
+    "configuration": "JTAGAdapter=default,PSRAM=disabled,PartitionScheme=custom,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,LoopCore=1,EventsCore=0,DebugLevel=warn,EraseFlash=none,ZigbeeMode=default",
+    "board": "esp32:esp32:esp32",
+    "output": "./build",
+    "sketch": "Demo.ino",
+    "programmer": "esptool",
+    "__prebuild": "@if exist .build (rd /s /q .build)",
+    "postbuild": " ",
+    "buildPreferences": [
+        [
+            "compiler.cpp.extra_flags",
+            "-DARDUINO_LOOP_STACK_SIZE=3052 -DARDUINOJSON_USE_PSRAM=1 -MMD -c"
+        ],
+        [
+            "upload.maximum_size",
+            "4194304"
+        ],
+        [
+            "build.partitions",
+            "partitions"
+        ]
+    ]
+}
