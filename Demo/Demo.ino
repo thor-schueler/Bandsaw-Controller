@@ -18,6 +18,7 @@
 // TMC2209 settings
 #define R_SENSE       0.10f
 #define DRIVER_ADDR   0b00
+#define SPEED 1500
 
 #define SOLENOID_A_PIN 12
 #define SOLENOID_B_PIN 14
@@ -26,7 +27,10 @@
 #define LIMIT_1_PIN 33
 #define LIMIT_2_PIN 35
 
-#define SPEED 1500
+#define POWER_RELAY_PIN 25
+#define EXPANDER_IRQ_PIN 34
+#define EXPANDER_I2C_SDA_PIN 27
+#define EXPANDER_I2C_SCL_PIN 26
 
 HardwareSerial TMCSerial(2);
 TMC2209Stepper driver(&TMCSerial, R_SENSE, DRIVER_ADDR);
@@ -230,6 +234,11 @@ void setup() {
   Serial.println(driver.TPOWERDOWN(), HEX);
   Serial.println(driver.GCONF(), HEX);
   Serial.println(driver.DRV_STATUS(), HEX);
+
+
+  pinMode(POWER_RELAY_PIN, OUTPUT);
+  pinMode(EXPANDER_IRQ_PIN, INPUT);
+  digitalWrite(POWER_RELAY_PIN, HIGH); 
 }
 
 uint16_t speed=SPEED;
@@ -246,7 +255,8 @@ void loop() {
     digitalWrite(DIR_PIN, dirState ? HIGH : LOW);
     digitalWrite(SOLENOID_A_PIN, dirState ? HIGH : LOW);
     digitalWrite(SOLENOID_B_PIN, dirState ? LOW : HIGH); 
-    digitalWrite(LIGHT_STRIP_PIN, dirState ? LOW : HIGH);     
+    digitalWrite(LIGHT_STRIP_PIN, dirState ? LOW : HIGH);   
+    digitalWrite(POWER_RELAY_PIN, dirState ? LOW : HIGH);  
     Serial.print("."); 
   }
 

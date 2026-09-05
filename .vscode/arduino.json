@@ -1,0 +1,21 @@
+{
+    "port": "COM3",
+    "board": "esp32:esp32:esp32",
+    "__prebuild": "@if exist .build (rd /s /q .build)",
+    "postbuild": " ",
+    "buildPreferences": [
+        [
+            "compiler.cpp.extra_flags",
+            "-DARDUINO_LOOP_STACK_SIZE=3052 -DARDUINOJSON_USE_PSRAM=1 -MMD -c"
+        ],
+        [
+            "upload.maximum_size",
+            "4194304"
+        ],
+        [
+            "build.partitions",
+            "partitions"
+        ]
+    ],
+    "sketch": "Demo\\Demo.ino"
+}
