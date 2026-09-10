@@ -1,6 +1,8 @@
 #include <LovyanGFX.hpp>
 #include <TMCStepper.h>
 #include "driver/ledc.h"
+#include "PCF8575.h"
+#include <FunctionalInterrupt.h>
 
 // UART pins (single-wire PDN_UART)
 #define TMC_UART_TX   17   // ESP32 TX → module RX pad via 1K resistor (PDN_UART)
@@ -31,6 +33,14 @@
 #define EXPANDER_IRQ_PIN 34
 #define EXPANDER_I2C_SDA_PIN 27
 #define EXPANDER_I2C_SCL_PIN 26
+
+#define PCF8575_ADDRESS 0x20
+#define PCF8575_SDA_PIN 26
+#define PCF8575_SCL_PIN 27
+#define PCF8575_INT_PIN 34
+
+#define WHEEL_A 36
+#define WHEEL_B 39
 
 HardwareSerial TMCSerial(2);
 TMC2209Stepper driver(&TMCSerial, R_SENSE, DRIVER_ADDR);
@@ -152,9 +162,69 @@ void IRAM_ATTR limit_2_isr() {
     limit2 = !digitalRead(LIMIT_2_PIN);
 }
 
+PCF8575* pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, on_PCF8575_input_changed);
+//TaskHandle_t extendedGPIOWatcher = NULL;
+
+/**
+ * @brief Task function to process changes to the inputs on the PCF8575
+ * GPIO extender. This funtions runs an endless blocking loop, waiting for notification 
+ * from on_PCF8575_input_changed upon which it evaluates the inputs and performs
+ * the appropriate actions. 
+ * @param args - pointer to task arguments
+ */
+/*
+void extended_GPIO_watcher(void* args)
+{
+    for (;;) 
+    { 
+        // Wait for the notification to come from the event handler
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        PCF8575::DigitalInput di = pcf8575->digitalReadAll();
+
+        if(!(di.p0 & di.p1 & di.p2 & di.p3 & di.p4 & di.p5 & di.p6 & di.p7 & di.p8 & di.p9 & di.p10 & di.p11))
+        {
+            uint16_t button_state = 0xf000;
+            button_state |= (di.p0 & 0x01) << 0; 
+            button_state |= (di.p1 & 0x01) << 1; 
+            button_state |= (di.p2 & 0x01) << 2; 
+            button_state |= (di.p3 & 0x01) << 3; 
+            button_state |= (di.p4 & 0x01) << 4; 
+            button_state |= (di.p5 & 0x01) << 5; 
+            button_state |= (di.p6 & 0x01) << 6; 
+            button_state |= (di.p7 & 0x01) << 7; 
+            button_state |= (di.p8 & 0x01) << 8; 
+            button_state |= (di.p9 & 0x01) << 9; 
+            button_state |= (di.p10 & 0x01) << 10; 
+            button_state |= (di.p11 & 0x01) << 11; 
+        }
+    }
+}
+    */
+
+void on_PCF8575_input_changed()
+{
+
+    // debounce check to prevent double button presses. The PCF8575 can be a bit noisy and this has been 
+    // found to be a reliable way to prevent it.
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
+    uint32_t currentTime = millis(); 
+
+    if ((currentTime - lastDebounceTime) > 250) 
+    {     
+        //vTaskNotifyGiveFromISR(extendedGPIOWatcher, &xHigherPriorityTaskWoken); 
+        //portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+                
+        // Update the last debounce time 
+        lastDebounceTime = currentTime; 
+    }
+}
+
 void setup() {
   Serial.begin(115200);
-  pinMode(4, INPUT_PULLUP);
+  delay(5000);
+  Serial.println("Starting setup...");
+  pinMode(4, INPUT_PULLUP); 
 
   lcd.init();
   lcd.setRotation(1);   // Landscape
@@ -164,6 +234,47 @@ void setup() {
   lcd.setTextSize(2);
   lcd.println("ST7796S + XPT2046 Test");
   lcd.println("Touch the screen...");
+
+  pinMode(PCF8575_SDA_PIN, INPUT);
+  pinMode(PCF8575_SCL_PIN, INPUT);
+  Wire.begin(PCF8575_SDA_PIN, PCF8575_SCL_PIN, 50000);
+  Wire.beginTransmission(0x20);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x20");
+  }
+  Wire.beginTransmission(0x21);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x21");
+  }
+  Wire.beginTransmission(0x22);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x22");
+  }
+  Wire.beginTransmission(0x23);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x23");
+  }
+  Wire.beginTransmission(0x24);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x24");
+  }
+  Wire.beginTransmission(0x25);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x25");
+  }
+  Wire.beginTransmission(0x26);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x26");
+  }
+  Wire.beginTransmission(0x27);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("PCF8575 found on 0x27");
+  }
+
+  for(int i=0; i<16; i++) pcf8575->pinMode(i, INPUT);
+  pcf8575->begin();
+  //xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, NULL, 1, &extendedGPIOWatcher, 0);
+
 
   // UART init
   TMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
@@ -242,6 +353,7 @@ void setup() {
 }
 
 uint16_t speed=SPEED;
+uint16_t button_state = 0xf000;
 void loop() {
   uint16_t x, y;
   unsigned long now = millis();
@@ -316,6 +428,32 @@ void loop() {
     else{
         lcd.setCursor(0, 160);
         lcd.fillRect(0, 160, 200, 40, TFT_BLACK);
+    }
+
+    
+    PCF8575::DigitalInput di = pcf8575->digitalReadAll();
+    uint16_t new_button_state = 0x000;
+    new_button_state |= (!di.p0 & 0x01) << 0; 
+    new_button_state |= (!di.p1 & 0x01) << 1; 
+    new_button_state |= (!di.p2 & 0x01) << 2; 
+    new_button_state |= (!di.p3 & 0x01) << 3; 
+    new_button_state |= (!di.p4 & 0x01) << 4; 
+    new_button_state |= (!di.p5 & 0x01) << 5; 
+    new_button_state |= (!di.p6 & 0x01) << 6; 
+    new_button_state |= (!di.p7 & 0x01) << 7; 
+    new_button_state |= (!di.p8 & 0x01) << 8; 
+    new_button_state |= (!di.p9 & 0x01) << 9; 
+    new_button_state |= (!di.p10 & 0x01) << 10; 
+    new_button_state |= (!di.p11 & 0x01) << 11; 
+    new_button_state |= (!di.p12 & 0x01) << 12;
+    new_button_state |= (!di.p13 & 0x01) << 13;
+    new_button_state |= (!di.p14 & 0x01) << 14;
+    new_button_state |= (!di.p15 & 0x01) << 15;    
+    if(new_button_state != button_state) {
+        button_state = new_button_state;
+        lcd.setCursor(0, 120);
+        lcd.fillRect(0, 120, 200, 40, TFT_BLACK);
+        lcd.printf("Buttons: %04X\n", button_state);
     }
   }
   delay(5);

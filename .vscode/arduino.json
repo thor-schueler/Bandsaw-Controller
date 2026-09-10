@@ -17,5 +17,6 @@
             "partitions"
         ]
     ],
-    "sketch": "Demo\\Demo.ino"
+    "sketch": "Demo\\Demo.ino",
+    "configuration": "JTAGAdapter=default,PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,LoopCore=1,EventsCore=1,DebugLevel=debug,EraseFlash=none,ZigbeeMode=default"
 }
