@@ -3,6 +3,7 @@
 // IMPORTANT: LIBRARY MUST BE SPECIFICALLY CONFIGURED FOR EITHER TFT SHIELD
 // OR BREAKOUT BOARD USAGE.
 
+#include "../../version.h"
 #include "display.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,12 +12,12 @@
 
 
 touch_area_t touch_areas[] = {
-  { 13, 55, 63, 86, "start" },
-  { 13, 88, 63, 119, "engage" },
-  { 13, 121, 63, 153, "home" },
-  { 13, 255, 63, 286, "settings" },
-  { 359, 143, 413, 193, "stock" },
-  { 416, 143, 464, 193, "alerts" },
+  { 13, 55, 63, 86, "start", start_icon },
+  { 13, 89, 63, 120, "engage", engage_icon },
+  { 13, 123, 63, 154, "home", home_icon},
+  { 13, 259, 63, 290, "settings", settings_icon },
+  { 359, 143, 413, 193, "stock", NULL },
+  { 416, 143, 464, 193, "alerts", NULL },
 };
 
 
@@ -117,7 +118,7 @@ void Display::begin() {
 
     this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
     this->setCursor(370, 5);
-    this->print("0.00.00");
+    this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 1560, this, 1, &_touchRunner, 0);
@@ -183,12 +184,16 @@ void IRAM_ATTR Display::processTouchInterrupt()
  */
 void Display::touch_runner(void* args)
 {
+    uint16_t x = UINT16_MAX;
+    uint16_t y = UINT16_MAX;
+    uint8_t sprite_index = UINT8_MAX;
     bool shouldProcess = true;
     Display *_this = reinterpret_cast<Display *>(args);
+    LGFX_Sprite active(_this);
+    active.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);         // create sprite
+    active.setColorDepth(16);                                               // setup for RGB565
     for(;;)
     {
-        uint16_t x, y;
-
         if(shouldProcess)
         {
             // Wait for the notification to come from the event handler
@@ -199,19 +204,38 @@ void Display::touch_runner(void* args)
                 {
                     if(x >= touch_areas[i].x1 && x <= touch_areas[i].x2 && y >= touch_areas[i].y1 && y <= touch_areas[i].y2) 
                     {
+                        if(touch_areas[i].icon != NULL)
+                        {
+                            active.fillSprite(0x0000);
+                            active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)active_button);                  // push active background
+                            active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);    // push icon overlay
+                            active.pushSprite(touch_areas[i].x1, touch_areas[i].y1, 0x0000);                                                    // push sprite
+                            sprite_index = i;
+                        }
                         _this->_callback(touch_areas[i].command.c_str());
                         shouldProcess = false;
                         break;
                     }
                 }
             }
-            if(shouldProcess) gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);
+            if(shouldProcess)
+            {   
+                gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);
+                sprite_index = UINT8_MAX;
+            }
         }
         else
         {
             if(digitalRead(TOUCH_IRQ_PIN) == HIGH)
             {
                 shouldProcess = true;
+                if(sprite_index != UINT_MAX)
+                {
+                    active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);                            // push active background
+                    active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[sprite_index].icon, 0x0000);     // push icon overlay
+                    active.pushSprite(touch_areas[sprite_index].x1, touch_areas[sprite_index].y1, 0x0000);        
+                    sprite_index = UINT8_MAX;
+                }
                 gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);
             }
         }

@@ -29,7 +29,17 @@
 #define TOUCH_CALIBRATION_Y_MIN 3900
 #define TOUCH_CALIBRATION_Y_MAX 250
 
+#define ACTIVE_BUTTON_WIDTH 51
+#define ACTIVE_BUTTON_HEIGHT 32
 extern const uint16_t background[] PROGMEM;
+extern const uint16_t active_button[] PROGMEM;
+extern const uint16_t active_button_tab[] PROGMEM;
+extern const uint16_t inactive_button[] PROGMEM;
+extern const uint16_t inactive_button_tab[] PROGMEM;
+extern const uint16_t start_icon[] PROGMEM;
+extern const uint16_t engage_icon[] PROGMEM;
+extern const uint16_t home_icon[] PROGMEM;
+extern const uint16_t settings_icon[] PROGMEM;
 
 typedef struct {
   uint16_t x1;
@@ -37,6 +47,7 @@ typedef struct {
   uint16_t x2;
   uint16_t y2;
   String command;
+  const uint16_t* icon;
 } touch_area_t;
 
 /**

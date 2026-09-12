@@ -23,6 +23,7 @@
 #include <new>
 
 // local libraries
+#include "version.h"
 //#include "src/config/config_page.h"
 #include "src/logging/SerialLogger.h"
 #include "src/controller/controller.h"
@@ -76,7 +77,7 @@ void setup()
   //
   // Startup
   //
-  Logger.Info_f(F("Copyright 2026, Thor Schueler, Firmware Version: %s"), "0.00.00");
+  Logger.Info_f(F("Copyright 2026, Thor Schueler, Firmware Version: %d.%d.%d"), FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
   Logger.Info_f(F("Loop task stack size: %i"), getArduinoLoopTaskStackSize());
   Logger.Info_f(F("Loop task stack high water mark: %i"), uxTaskGetStackHighWaterMark(NULL));
   Logger.Info_f(F("Total heap: %d"), ESP.getHeapSize()); 
