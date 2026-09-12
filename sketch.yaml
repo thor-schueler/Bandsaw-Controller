@@ -1,0 +1,9 @@
+profiles:
+  esp32:
+    notes: Firmware for Bandsaw Controller
+    fqbn: esp32:esp32:esp32
+    libraries:
+      - "PCF8575 (2.0.1)"
+      - "ArduinoJson (6.21.0)"
+      - "LovyanGFX (0.4.19)"
+      - "TMC Stepper (0.9.2)"

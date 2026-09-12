@@ -3,10 +3,11 @@
     "board": "esp32:esp32:esp32",
     "__prebuild": "@if exist .build (rd /s /q .build)",
     "postbuild": " ",
+    "output": "./build",
     "buildPreferences": [
         [
             "compiler.cpp.extra_flags",
-            "-DARDUINO_LOOP_STACK_SIZE=3052 -DARDUINOJSON_USE_PSRAM=1 -MMD -c"
+            "-DARDUINO_LOOP_STACK_SIZE=3052 -DARDUINOJSON_USE_PSRAM=1 -MMD -c -fno-exceptions"
         ],
         [
             "upload.maximum_size",
@@ -17,6 +18,7 @@
             "partitions"
         ]
     ],
-    "sketch": "Demo\\Demo.ino",
-    "configuration": "JTAGAdapter=default,PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,LoopCore=1,EventsCore=1,DebugLevel=debug,EraseFlash=none,ZigbeeMode=default"
+    "sketch": "Bandsaw Controller.ino",
+    "configuration": "JTAGAdapter=default,PSRAM=enabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,LoopCore=1,EventsCore=1,DebugLevel=error,EraseFlash=none,ZigbeeMode=default",
+    "programmer": "esptool"
 }

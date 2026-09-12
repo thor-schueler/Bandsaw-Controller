@@ -117,7 +117,7 @@ public:
       cfg.pin_mosi   = 23;
       cfg.pin_miso   = 19;
       cfg.pin_cs     = 4;             // Touch CS
-      cfg.pin_int    = 22;            // Touch IRQ
+      cfg.pin_int    = -1;            // Touch IRQ
       cfg.x_min      = 175;           // Calibrate these
       cfg.x_max      = 3800;
       cfg.y_min      = 3900;
@@ -162,7 +162,7 @@ void IRAM_ATTR limit_2_isr() {
     limit2 = !digitalRead(LIMIT_2_PIN);
 }
 
-PCF8575* pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, on_PCF8575_input_changed);
+PCF8575* pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN);
 //TaskHandle_t extendedGPIOWatcher = NULL;
 
 /**
@@ -224,7 +224,7 @@ void setup() {
   Serial.begin(115200);
   delay(5000);
   Serial.println("Starting setup...");
-  pinMode(4, INPUT_PULLUP); 
+  //pinMode(4, INPUT_PULLUP); 
 
   lcd.init();
   lcd.setRotation(1);   // Landscape
@@ -235,44 +235,44 @@ void setup() {
   lcd.println("ST7796S + XPT2046 Test");
   lcd.println("Touch the screen...");
 
-  pinMode(PCF8575_SDA_PIN, INPUT);
-  pinMode(PCF8575_SCL_PIN, INPUT);
-  Wire.begin(PCF8575_SDA_PIN, PCF8575_SCL_PIN, 50000);
-  Wire.beginTransmission(0x20);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x20");
-  }
-  Wire.beginTransmission(0x21);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x21");
-  }
-  Wire.beginTransmission(0x22);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x22");
-  }
-  Wire.beginTransmission(0x23);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x23");
-  }
-  Wire.beginTransmission(0x24);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x24");
-  }
-  Wire.beginTransmission(0x25);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x25");
-  }
-  Wire.beginTransmission(0x26);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x26");
-  }
-  Wire.beginTransmission(0x27);
-  if (Wire.endTransmission() == 0) {
-    Serial.println("PCF8575 found on 0x27");
-  }
+  //pinMode(PCF8575_SDA_PIN, INPUT);
+  //pinMode(PCF8575_SCL_PIN, INPUT);
+  //Wire.begin(PCF8575_SDA_PIN, PCF8575_SCL_PIN, 50000);
+  //Wire.beginTransmission(0x20);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x20");
+  //}
+  //Wire.beginTransmission(0x21);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x21");
+  //}
+  //Wire.beginTransmission(0x22);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x22");
+  //}
+  //Wire.beginTransmission(0x23);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x23");
+  //}
+  //Wire.beginTransmission(0x24);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x24");
+  //}
+  //Wire.beginTransmission(0x25);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x25");
+  //}
+  //Wire.beginTransmission(0x26);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x26");
+  //}
+  //Wire.beginTransmission(0x27);
+  //if (Wire.endTransmission() == 0) {
+  //  Serial.println("PCF8575 found on 0x27");
+  //}
 
-  for(int i=0; i<16; i++) pcf8575->pinMode(i, INPUT);
-  pcf8575->begin();
+  //for(int i=0; i<16; i++) pcf8575->pinMode(i, INPUT);
+  //pcf8575->begin();
   //xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, NULL, 1, &extendedGPIOWatcher, 0);
 
 
@@ -431,30 +431,30 @@ void loop() {
     }
 
     
-    PCF8575::DigitalInput di = pcf8575->digitalReadAll();
-    uint16_t new_button_state = 0x000;
-    new_button_state |= (!di.p0 & 0x01) << 0; 
-    new_button_state |= (!di.p1 & 0x01) << 1; 
-    new_button_state |= (!di.p2 & 0x01) << 2; 
-    new_button_state |= (!di.p3 & 0x01) << 3; 
-    new_button_state |= (!di.p4 & 0x01) << 4; 
-    new_button_state |= (!di.p5 & 0x01) << 5; 
-    new_button_state |= (!di.p6 & 0x01) << 6; 
-    new_button_state |= (!di.p7 & 0x01) << 7; 
-    new_button_state |= (!di.p8 & 0x01) << 8; 
-    new_button_state |= (!di.p9 & 0x01) << 9; 
-    new_button_state |= (!di.p10 & 0x01) << 10; 
-    new_button_state |= (!di.p11 & 0x01) << 11; 
-    new_button_state |= (!di.p12 & 0x01) << 12;
-    new_button_state |= (!di.p13 & 0x01) << 13;
-    new_button_state |= (!di.p14 & 0x01) << 14;
-    new_button_state |= (!di.p15 & 0x01) << 15;    
-    if(new_button_state != button_state) {
-        button_state = new_button_state;
-        lcd.setCursor(0, 120);
-        lcd.fillRect(0, 120, 200, 40, TFT_BLACK);
-        lcd.printf("Buttons: %04X\n", button_state);
-    }
+    //PCF8575::DigitalInput di = pcf8575->digitalReadAll();
+    //uint16_t new_button_state = 0x000;
+    //new_button_state |= (!di.p0 & 0x01) << 0; 
+    //new_button_state |= (!di.p1 & 0x01) << 1; 
+    //new_button_state |= (!di.p2 & 0x01) << 2; 
+    //new_button_state |= (!di.p3 & 0x01) << 3; 
+    //new_button_state |= (!di.p4 & 0x01) << 4; 
+    //new_button_state |= (!di.p5 & 0x01) << 5; 
+    //new_button_state |= (!di.p6 & 0x01) << 6; 
+    //new_button_state |= (!di.p7 & 0x01) << 7; 
+    //new_button_state |= (!di.p8 & 0x01) << 8; 
+    //new_button_state |= (!di.p9 & 0x01) << 9; 
+    //new_button_state |= (!di.p10 & 0x01) << 10; 
+    //new_button_state |= (!di.p11 & 0x01) << 11; 
+    //new_button_state |= (!di.p12 & 0x01) << 12;
+    //new_button_state |= (!di.p13 & 0x01) << 13;
+    //new_button_state |= (!di.p14 & 0x01) << 14;
+    //new_button_state |= (!di.p15 & 0x01) << 15;    
+    //if(new_button_state != button_state) {
+    //    button_state = new_button_state;
+    //    lcd.setCursor(0, 120);
+    //    lcd.fillRect(0, 120, 200, 40, TFT_BLACK);
+    //    lcd.printf("Buttons: %04X\n", button_state);
+    //}
   }
   delay(5);
 }
