@@ -32,6 +32,16 @@
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
 
+
+typedef struct input_entry
+{
+    std::function<void(uint8_t gpio, const char*)> entry;
+    std::function<void(uint8_t gpio, const char*)> exit;
+    int ext_gpio;
+    String command;
+
+} input_entry_t;
+
 class Inputs {
 
   public: 
@@ -53,6 +63,16 @@ class Inputs {
      * 
      */    
     void begin();
+
+    /**
+     * @brief Registers a command for a specific GPIO
+     * 
+     * @param gpio  - the gpio that will invoke the command 
+     * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
+     * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+     * @param cmd   - the title of the command. 
+     */
+    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd);
 
   private: 
 

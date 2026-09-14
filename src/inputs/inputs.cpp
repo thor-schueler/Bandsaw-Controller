@@ -3,18 +3,37 @@
 
 #include "inputs.h"
 
-uint8_t instances = 0;
+uint8_t __instances = 0;
+input_entry_t __inputs[] = {
+    { NULL, NULL, 0, "" },
+    { NULL, NULL, 1, "" },
+    { NULL, NULL, 2, "" },
+    { NULL, NULL, 3, "" },
+    { NULL, NULL, 4, "" },
+    { NULL, NULL, 5, "" },
+    { NULL, NULL, 6, "" },
+    { NULL, NULL, 7, "" },
+    { NULL, NULL, 8, "" },
+    { NULL, NULL, 9, "" },
+    { NULL, NULL, 10, "" },
+    { NULL, NULL, 11, "" },
+    { NULL, NULL, 12, "" },
+    { NULL, NULL, 13, "" },
+    { NULL, NULL, 14, "" },
+    { NULL, NULL, 15, "" }
+};
+
 
 Inputs::Inputs()
 {
     if(Inputs::pcf8575 == NULL) Inputs::pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, Inputs::on_PCF8575_input_changed);
-    instances++;
+    __instances++;
 }
 
 Inputs::~Inputs()
 {
-    instances--;
-    if(instances == 0)
+    __instances--;
+    if(__instances == 0)
     {
         if(Inputs::pcf8575 != NULL) delete Inputs::pcf8575;
         if(Inputs::extendedGPIOWatcher != NULL)
@@ -41,6 +60,28 @@ void Inputs::begin()
         xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::extendedGPIOWatcher, 0);
     }
 }
+
+/**
+ * @brief Registers a command for a specific GPIO
+ * 
+ * @param gpio  - the gpio that will invoke the command 
+ * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
+ * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+ * @param cmd   - the title of the command. 
+ */
+void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd)
+{
+    if(gpio < 0 || gpio > 15)
+    {   
+        Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and 15. Ignoring...."), gpio);
+        return;
+    }
+    __inputs[gpio].entry = entry;
+    __inputs[gpio].exit = exit;
+    __inputs[gpio].command = cmd;
+    __inputs[gpio].ext_gpio = gpio;
+}
+
 
 /**
  * @brief Task function to process changes to the inputs on the PCF8575

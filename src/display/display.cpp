@@ -227,7 +227,7 @@ void Display::touch_runner(void* args)
             if(digitalRead(TOUCH_IRQ_PIN) == HIGH)
             {
                 shouldProcess = true;
-                if(sprite_index != UINT_MAX)
+                if(sprite_index != UINT_MAX && touch_areas[sprite_index].icon != NULL)
                 {
                     active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);                            // push active background
                     active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[sprite_index].icon, 0x0000);     // push icon overlay
