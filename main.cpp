@@ -27,10 +27,7 @@
 //#include "src/config/config_page.h"
 #include "src/logging/SerialLogger.h"
 #include "src/controller/controller.h"
-//#include "src/display/display_wheel.h"
-//include "src/connection_monitor/connection_monitor.h"
-//include "src/battery_gauge/battery_gauge.h"
-//include "src/wheel/wheel.h"
+
 
 //#define TELEMETRY_FREQUENCY_MILLISECS 120000
 //#define AP_ENABLE_PIN 5
@@ -109,4 +106,5 @@ void loop()
   if (!touchCommand.isEmpty()) {
     Logger.Info_f(F("Touch command received: %s"), touchCommand.c_str());
   }
+  //Logger.Info_f("IRQ: %d", digitalRead(34));
 }

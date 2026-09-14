@@ -14,6 +14,7 @@
 Controller::Controller()
 {
     this->_display = new Display();
+    this->_inputs = new Inputs();
 }
 
 /** 
@@ -21,7 +22,10 @@ Controller::Controller()
   */
 Controller::~Controller() 
 {
-    if(this->_display != NULL) this->_display;
+    if(this->_display != NULL) delete this->_display;
+    if(this->_inputs != NULL) delete this->_inputs;
+    this->_display = NULL;
+    this->_inputs = NULL;
 }
 
 /**
@@ -32,6 +36,8 @@ void Controller::begin()
 {
     this->_display->begin();
     this->_display->setTouchCallback(std::bind(&Controller::touch_callback, this, std::placeholders::_1));
+
+    this->_inputs->begin();
 }
 
 

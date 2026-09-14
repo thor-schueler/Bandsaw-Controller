@@ -7,6 +7,7 @@
 #include "Arduino.h"
 #include "src/display/display.h"
 #include "src/logging/SerialLogger.h"
+#include "src/inputs/inputs.h"
 
 /**
  * @brief  This is the main class for the bandsaw controller, coordinating and managing the various 
@@ -43,7 +44,8 @@ class Controller
 
         void touch_callback(const char* command);
 
-        Display* _display;
+        Display* _display = NULL;
+        Inputs* _inputs = NULL;
         String _touch_command;
 };
 

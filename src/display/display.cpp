@@ -1,7 +1,5 @@
 // Copyright (c) Thor Schueler. All rights reserved.
 // SPDX-License-Identifier: MIT
-// IMPORTANT: LIBRARY MUST BE SPECIFICALLY CONFIGURED FOR EITHER TFT SHIELD
-// OR BREAKOUT BOARD USAGE.
 
 #include "../../version.h"
 #include "display.h"
