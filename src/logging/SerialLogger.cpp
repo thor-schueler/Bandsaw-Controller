@@ -29,6 +29,7 @@ SerialLogger::SerialLogger()
   {
     gen_malloc = ps_malloc;
   };
+  this->logger_mutex = xSemaphoreCreateMutex();
 }
 
 
@@ -40,10 +41,14 @@ SerialLogger::SerialLogger()
  */
 void SerialLogger::Info(String message)
 {
-  Serial.print("; ");
-  this->writeTime();
-  Serial.print(F(" [INFO] "));
-  Serial.println(message);
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  {
+    Serial.print("; ");
+    this->writeTime();
+    Serial.print(F(" [INFO] "));
+    Serial.println(message);
+    xSemaphoreGive(this->logger_mutex);
+  }
 }
 
 /**
@@ -58,10 +63,14 @@ size_t SerialLogger::Info_f(String format, ...)
   char *buf = NULL;
   va_list arg;
   va_list copy;
-  Serial.print("; ");
-  this->writeTime();
-  Serial.print(F(" [INFO] "));
-
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  {  
+    Serial.print("; ");
+    this->writeTime();
+    Serial.print(F(" [INFO] "));
+    xSemaphoreGive(this->logger_mutex);
+  }
+  
   va_start(arg, format);
   va_copy(copy, arg);
   int len = vsnprintf(NULL, 0, format.c_str(), arg);
@@ -84,9 +93,13 @@ size_t SerialLogger::Info_f(String format, ...)
   len = vsnprintf(buf, len+1, format.c_str(), copy);
   va_end(arg);
   va_end(copy);
-  len = Serial.print(buf);
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  {
+    len = Serial.print(buf);
+    Serial.println();
+    xSemaphoreGive(this->logger_mutex);
+  }
   free(buf);
-  Serial.println();
   return len;
 }
 #pragma endregion 
@@ -99,10 +112,14 @@ size_t SerialLogger::Info_f(String format, ...)
  */  
 void SerialLogger::Error(String message)
 {
-  Serial.print("; ");
-  this->writeTime();
-  Serial.print(F(" [ERROR] "));
-  Serial.println(message);
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  { 
+    Serial.print("; ");
+    this->writeTime();
+    Serial.print(F(" [ERROR] "));
+    Serial.println(message);
+    xSemaphoreGive(this->logger_mutex);
+  }
 }
 
 /**
@@ -117,9 +134,13 @@ size_t SerialLogger::Error_f(String format, ...)
   char *buf = NULL;
   va_list arg;
   va_list copy;
-  Serial.print("; ");
-  this->writeTime();
-  Serial.print(F(" [ERROR] "));
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  {
+    Serial.print("; ");
+    this->writeTime();
+    Serial.print(F(" [ERROR] "));
+    xSemaphoreGive(this->logger_mutex);
+  }
 
   va_start(arg, format);
   va_copy(copy, arg);
@@ -141,10 +162,13 @@ size_t SerialLogger::Error_f(String format, ...)
   len = vsnprintf(buf, len+1, format.c_str(), copy);
   va_end(arg);
   va_end(copy);
-  len = Serial.print(buf);
+  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
+  { 
+    len = Serial.print(buf);
+    Serial.println();
+    xSemaphoreGive(this->logger_mutex);
+  }
   free(buf);
-
-  Serial.println();
   return len;
 }
 #pragma endregion

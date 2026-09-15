@@ -42,7 +42,8 @@ class Controller
 
     private:
 
-        void touch_callback(const char* command);
+        void switch_on(uint8_t gpio, const char* command);
+        void switch_off(uint8_t gpio, const char* command);
 
         Display* _display = NULL;
         Inputs* _inputs = NULL;

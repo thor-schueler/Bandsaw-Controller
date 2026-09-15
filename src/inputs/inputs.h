@@ -32,7 +32,11 @@
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
 
-
+/**
+ * @brief defines an input entry, which determines what methods to call when 
+ * a GPIO turns on or off. 
+ * 
+ */
 typedef struct input_entry
 {
     std::function<void(uint8_t gpio, const char*)> entry;
@@ -42,6 +46,12 @@ typedef struct input_entry
 
 } input_entry_t;
 
+
+/**
+ * @brief This class is repsonsible for watching and processing the various inputs of the bandsaw 
+ * and initiate the appropriate actions in the controller, display and motion modules.
+ * 
+ */
 class Inputs {
 
   public: 
@@ -59,10 +69,28 @@ class Inputs {
     ~Inputs();
 
     /**
+     * @brief Get the inputs object
+     * 
+     * @return reference to a std::array of input_entry_t types.  
+     */
+    static std::array<input_entry_t, 16>& get_inputs();
+
+
+    /**
      * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
      * 
      */    
     void begin();
+
+    /**
+     * @brief Registers a command for a specific GPIO
+     * 
+     * @param gpio  - the gpio that will invoke the command 
+     * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
+     * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+     */
+    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit);
+
 
     /**
      * @brief Registers a command for a specific GPIO

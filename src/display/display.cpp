@@ -1,8 +1,9 @@
 // Copyright (c) Thor Schueler. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-#include "../../version.h"
+#include "version.h"
 #include "display.h"
+#include "src/inputs/inputs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -10,12 +11,12 @@
 
 
 touch_area_t touch_areas[] = {
-  { 13, 55, 63, 86, "start", start_icon },
-  { 13, 89, 63, 120, "engage", engage_icon },
-  { 13, 123, 63, 154, "home", home_icon},
-  { 13, 259, 63, 290, "settings", settings_icon },
-  { 359, 143, 413, 193, "stock", NULL },
-  { 416, 143, 464, 193, "alerts", NULL },
+  { 13, 55, 63, 86, start_icon, EXT_GPIO_START_PIN },
+  { 13, 89, 63, 120, engage_icon, EXT_GPIO_ENGAGE_PIN },
+  { 13, 123, 63, 154, home_icon, EXT_GPIO_HOME_PIN},
+  { 13, 259, 63, 290, settings_icon, UINT8_MAX },
+  { 359, 143, 413, 193, NULL, UINT8_MAX },
+  { 416, 143, 464, 193, NULL, UINT8_MAX },
 };
 
 
@@ -119,40 +120,19 @@ void Display::begin() {
     this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
 
     Logger.Info(F("...   Setup various tasks"));
-    xTaskCreatePinnedToCore(touch_runner, "touchRunner", 1560, this, 1, &_touchRunner, 0);
+    xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
 
+    Logger.Info(F("...   Regsiter Touch interrupts"));
+    uint8_t ctrl = 0b10010000;
+    attachInterrupt(digitalPinToInterrupt(TOUCH_IRQ_PIN), std::bind(&Display::processTouchInterrupt, this), FALLING);
+    lgfx::spi::beginTransaction(SPI2_HOST, SPI_BUS_TOUCH_FREQUENCY, 0);
+    lgfx::gpio_lo(CS_TOUCH_PIN);
+    lgfx::spi::writeBytes(SPI2_HOST, &ctrl, 1);   // PD1=0, PD0=0 → IRQ enabled
+    lgfx::gpio_hi(CS_TOUCH_PIN);
+    lgfx::spi::endTransaction(SPI2_HOST);
+    Logger.Info(F("...   Touch Interrupt on XPT2046 activated"));
     Logger.Info(F("...   ST7796S + XPT2046 Initialization complete."));
     Logger.Info(F("...   Done."));
-}
-
-/**
- * @brief Set the Touch Callback method to call when a relevant touch event occurs
- * 
- * @param callback - The callback function to call when a touch event occurs
- */  
-void Display::setTouchCallback(std::function<void(const char*)> callback) {
-    this->_callback = callback;
-
-    /// only register an interrupt if we actually have a callback funtion to 
-    /// minimize unncessary logic execution
-    if(this->_callback != NULL) 
-    {
-      uint8_t ctrl = 0b10010000;
-      attachInterrupt(digitalPinToInterrupt(TOUCH_IRQ_PIN), std::bind(&Display::processTouchInterrupt, this), FALLING);
-      Logger.Info(F("... Touch callback registered."));
-
-      lgfx::spi::beginTransaction(SPI2_HOST, SPI_BUS_TOUCH_FREQUENCY, 0);
-      lgfx::gpio_lo(CS_TOUCH_PIN);
-      lgfx::spi::writeBytes(SPI2_HOST, &ctrl, 1);   // PD1=0, PD0=0 → IRQ enabled
-      lgfx::gpio_hi(CS_TOUCH_PIN);
-      lgfx::spi::endTransaction(SPI2_HOST);
-      Logger.Info(F("... Touch Interrupt on XPT2046 activated"));
-    } 
-    else 
-    {
-      detachInterrupt(digitalPinToInterrupt(TOUCH_IRQ_PIN));
-      Logger.Info(F("... Touch callback unregistered."));
-    }
 }
 
 /**
@@ -167,7 +147,7 @@ void Display::setTouchCallback(std::function<void(const char*)> callback) {
 void IRAM_ATTR Display::processTouchInterrupt()
 { 
     BaseType_t xHigherPriorityTaskToken = pdFALSE;
-    if(this->_callback != NULL && this->_touchRunner != NULL)
+    if(this->_touchRunner != NULL)
     {
         gpio_intr_disable((gpio_num_t)TOUCH_IRQ_PIN);
         vTaskNotifyGiveFromISR(this->_touchRunner, &xHigherPriorityTaskToken); 
@@ -186,17 +166,19 @@ void Display::touch_runner(void* args)
     uint16_t y = UINT16_MAX;
     uint8_t sprite_index = UINT8_MAX;
     bool shouldProcess = true;
+    auto& inputs = Inputs::get_inputs();
     Display *_this = reinterpret_cast<Display *>(args);
     LGFX_Sprite active(_this);
     active.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);         // create sprite
     active.setColorDepth(16);                                               // setup for RGB565
+    Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {
         if(shouldProcess)
         {
             // Wait for the notification to come from the event handler
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            if (_this->getTouch(&x, &y) && _this->_callback != NULL) 
+            if (_this->getTouch(&x, &y)) 
             {
                 for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
                 {
@@ -210,7 +192,8 @@ void Display::touch_runner(void* args)
                             active.pushSprite(touch_areas[i].x1, touch_areas[i].y1, 0x0000);                                                    // push sprite
                             sprite_index = i;
                         }
-                        _this->_callback(touch_areas[i].command.c_str());
+                        uint8_t gpio = touch_areas[i].gpio;
+                        if(gpio != UINT8_MAX && inputs[gpio].entry != nullptr) inputs[gpio].entry(gpio, inputs[gpio].command.c_str());
                         shouldProcess = false;
                         break;
                     }
@@ -227,11 +210,16 @@ void Display::touch_runner(void* args)
             if(digitalRead(TOUCH_IRQ_PIN) == HIGH)
             {
                 shouldProcess = true;
-                if(sprite_index != UINT_MAX && touch_areas[sprite_index].icon != NULL)
+                if(sprite_index != UINT8_MAX)
                 {
-                    active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);                            // push active background
-                    active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[sprite_index].icon, 0x0000);     // push icon overlay
-                    active.pushSprite(touch_areas[sprite_index].x1, touch_areas[sprite_index].y1, 0x0000);        
+                    uint8_t gpio = touch_areas[sprite_index].gpio;
+                    if(inputs[gpio].exit != nullptr) inputs[gpio].exit(gpio, inputs[gpio].command.c_str());
+                    if(touch_areas[sprite_index].icon != NULL)
+                    {
+                        active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);                            // push active background
+                        active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[sprite_index].icon, 0x0000);     // push icon overlay
+                        active.pushSprite(touch_areas[sprite_index].x1, touch_areas[sprite_index].y1, 0x0000);        
+                    }
                     sprite_index = UINT8_MAX;
                 }
                 gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);

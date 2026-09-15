@@ -35,13 +35,27 @@ Controller::~Controller()
 void Controller::begin() 
 {
     this->_display->begin();
-    this->_display->setTouchCallback(std::bind(&Controller::touch_callback, this, std::placeholders::_1));
 
+    this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), nullptr);
+    this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), nullptr);
+    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), nullptr);
+    this->_inputs->register_command(EXT_GPIO_LIGHT_COLD, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_LIGHT_WARM, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_AIR_ON, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_AIR_AUTO, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_LUBE_ON, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::switch_off, this, std::placeholders::_1, std::placeholders::_2));
     this->_inputs->begin();
 }
 
 
-void Controller::touch_callback(const char* command)
+void Controller::switch_on(uint8_t gpio, const char* command)
 {
-    this->_touch_command = String(command);
+    Logger.Info_f(F("Command on: %s, gpio %d"), command, gpio);
+}
+
+void Controller::switch_off(uint8_t gpio, const char* command)
+{
+    Logger.Info_f(F("Command off: %s, gpio %d"), command, gpio);
 }

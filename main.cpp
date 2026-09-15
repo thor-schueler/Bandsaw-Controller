@@ -102,9 +102,9 @@ void loop()
   vTaskDelay(100);
   //Logger.Info_f(F("Free heap: %d"), ESP.getFreeHeap());
   //Logger.Info_f(F("Wheel Runner Stack Usage: %d"), uxTaskGetStackHighWaterMark(wheel->_wheelRunner));
-  String touchCommand = controller->get_touch_command();
-  if (!touchCommand.isEmpty()) {
-    Logger.Info_f(F("Touch command received: %s"), touchCommand.c_str());
-  }
+  //String touchCommand = controller->get_touch_command();
+  //if (!touchCommand.isEmpty()) {
+  //  Logger.Info_f(F("Touch command received: %s"), touchCommand.c_str());
+  //}
   //Logger.Info_f("IRQ: %d", digitalRead(34));
 }

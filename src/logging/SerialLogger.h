@@ -69,6 +69,8 @@ private:
    * 
    */
   void writeTime();
+
+  SemaphoreHandle_t logger_mutex;
 };
 
 /**

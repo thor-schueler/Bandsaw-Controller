@@ -46,8 +46,8 @@ typedef struct {
   uint16_t y1;
   uint16_t x2;
   uint16_t y2;
-  String command;
   const uint16_t* icon;
+  uint8_t gpio;
 } touch_area_t;
 
 /**
@@ -80,14 +80,6 @@ public:
      */
     void begin();
 
-    /**
-     * @brief Set the Touch Callback method to call when a relevant touch event occurs
-     * 
-     * @param callback - The callback function to call when a touch event occurs
-     */
-    //void setTouchCallback(void (*callback)(const char*));
-    void setTouchCallback(std::function<void(const char*)> callback);
-  
   protected:
 
     /**
@@ -99,7 +91,6 @@ public:
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
     lgfx::Touch_XPT2046 _touch;
-    std::function<void(const char*)> _callback = NULL;
 
   private:
 
