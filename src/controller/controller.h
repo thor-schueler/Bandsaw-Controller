@@ -9,6 +9,8 @@
 #include "src/logging/SerialLogger.h"
 #include "src/inputs/inputs.h"
 
+#define LIGHT_STRIP_PIN 32
+
 /**
  * @brief  This is the main class for the bandsaw controller, coordinating and managing the various 
  * components of the system. 
@@ -40,6 +42,14 @@ class Controller
             return command;
         }
 
+    protected:
+
+        void warm_lights_on(uint8_t gpio, const char* command);
+
+        void bright_lights_on(uint8_t gpio, const char* command);
+
+        void lights_off(uint8_t gpio, const char* command);
+
     private:
 
         void switch_on(uint8_t gpio, const char* command);
@@ -48,6 +58,7 @@ class Controller
         Display* _display = NULL;
         Inputs* _inputs = NULL;
         String _touch_command;
+        bool _enable_backlight = true;
 };
 
 

@@ -7,7 +7,7 @@
 #include "Arduino.h"
 #include <functional>
 #include "PCF8575.h"
-#include "../logging/SerialLogger.h"
+#include "src/logging/SerialLogger.h"
 
 #define EXPANDER_IRQ_PIN 34
 #define EXPANDER_I2C_SDA_PIN 27
@@ -18,8 +18,8 @@
 #define PCF8575_SCL_PIN 27
 #define PCF8575_INT_PIN 34
 
-#define WHEEL_A 36
-#define WHEEL_B 39
+#define WHEEL_A 39
+#define WHEEL_B 36
 
 #define EXT_GPIO_START_PIN  1
 #define EXT_GPIO_ENGAGE_PIN 0
@@ -31,6 +31,9 @@
 #define EXT_GPIO_LIGHT_WARM 3
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
+
+#define WHEEL_A 36
+#define WHEEL_B 39
 
 /**
  * @brief defines an input entry, which determines what methods to call when 
@@ -114,13 +117,33 @@ class Inputs {
     static void extended_GPIO_watcher(void* args);
 
     /**
+     * @brief Task function managing wheel movements. This task runs an endless blocking loop,
+     * waiting for notification from handle_encoder_change upon which it will process
+     * and execute the appropriate action.
+     * @param args - pointer to task arguments 
+     */
+    static void wheel_runner(void* args);
+
+
+    /**
      * @brief Event handler handling input change events on the PCF8575 
      *
      */
-    static void on_PCF8575_input_changed();
+    static void IRAM_ATTR on_PCF8575_input_changed();
 
-    inline static PCF8575* pcf8575 = NULL;
-    inline static TaskHandle_t extendedGPIOWatcher = NULL;
+    /**
+     * @brief Event handler watching the Quadradure encoder GPIOs.
+     * @param arg - argumnent passed to the handler, expected to be the instance of the calling object and can 
+     * be cast to Inputs*
+     */
+    static void IRAM_ATTR handle_encoder_change(void* arg);    
+
+    inline static PCF8575* _pcf8575 = NULL;
+    inline static TaskHandle_t _extendedGPIOWatcher = NULL;
+    TaskHandle_t _wheelRunner;
+    int16_t _wheel_encoded = 0x0;
+    int16_t _wheel_position = 0x0;
+    int8_t _direction = 0;
 
 };
 

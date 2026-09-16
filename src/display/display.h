@@ -6,7 +6,7 @@
 
 #include "Arduino.h"
 #include <LovyanGFX.hpp>
-#include "../logging/SerialLogger.h"
+#include "src/logging/SerialLogger.h"
 #include <functional>
 
 #define SCLK_PIN        18
@@ -31,24 +31,45 @@
 
 #define ACTIVE_BUTTON_WIDTH 51
 #define ACTIVE_BUTTON_HEIGHT 32
+#define TAB_WIDTH 10
+#define TAB_HEIGHT 32
 extern const uint16_t background[] PROGMEM;
 extern const uint16_t active_button[] PROGMEM;
-extern const uint16_t active_button_tab[] PROGMEM;
+extern const uint16_t active_tab[] PROGMEM;
 extern const uint16_t inactive_button[] PROGMEM;
-extern const uint16_t inactive_button_tab[] PROGMEM;
+extern const uint16_t inactive_tab[] PROGMEM;
+extern const uint16_t pending_tab[] PROGMEM;
 extern const uint16_t start_icon[] PROGMEM;
 extern const uint16_t engage_icon[] PROGMEM;
 extern const uint16_t home_icon[] PROGMEM;
+extern const uint16_t air_icon[] PROGMEM;
+extern const uint16_t lube_icon[] PROGMEM;
+extern const uint16_t light_icon[] PROGMEM;
 extern const uint16_t settings_icon[] PROGMEM;
 
+/**
+ * @brief Structure to define the area and behavior of a touch function. 
+ * 
+ */
 typedef struct {
-  uint16_t x1;
-  uint16_t y1;
-  uint16_t x2;
-  uint16_t y2;
+  uint16_t icon_x1;
+  uint16_t icon_y1;
+  uint16_t icon_x2;
+  uint16_t icon_y2;
+  uint16_t tab_x1;
+  uint16_t tab_y1;
+  uint16_t tab_x2;
+  uint16_t tab_y2;
   const uint16_t* icon;
   uint8_t gpio;
+  bool enable;
 } touch_area_t;
+
+typedef enum TOUCH_TAB_STATE{
+  ON,
+  OFF,
+  WAITING
+} touch_tab_state_t;
 
 /**
  * @brief The Display class is a wrapper around the LovyanGFX library that provides an interface for 
@@ -79,6 +100,28 @@ public:
      * 
      */
     void begin();
+
+    /**
+     * @brief Set the icon and background for a button
+     * 
+     * @param gpio - the gpio number associated with the button
+     * @param on - the desired state of the tab (on, off or pending)
+     * 
+     * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
+     * only and not associated with a physical pin.
+     */
+    void set_button(uint8_t gpio, touch_tab_state_t state);
+
+    /**
+     * @brief Set the button tab on a particular button
+     * 
+     * @param gpio - the gpio number associated with the button
+     * @param on - the desired state of the tab (on, off or pending)
+     * 
+     * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
+     * only and not associated with a physical pin.
+     */
+    void set_button_tab(uint8_t gpio, touch_tab_state_t state);
 
   protected:
 

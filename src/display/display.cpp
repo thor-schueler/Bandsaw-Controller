@@ -11,12 +11,18 @@
 
 
 touch_area_t touch_areas[] = {
-  { 13, 55, 63, 86, start_icon, EXT_GPIO_START_PIN },
-  { 13, 89, 63, 120, engage_icon, EXT_GPIO_ENGAGE_PIN },
-  { 13, 123, 63, 154, home_icon, EXT_GPIO_HOME_PIN},
-  { 13, 259, 63, 290, settings_icon, UINT8_MAX },
-  { 359, 143, 413, 193, NULL, UINT8_MAX },
-  { 416, 143, 464, 193, NULL, UINT8_MAX },
+  { 13, 55, 63, 86, 64, 55, 73, 86, start_icon, EXT_GPIO_START_PIN, true },
+  { 13, 89, 63, 120, 64, 89, 73, 120, engage_icon, EXT_GPIO_ENGAGE_PIN, true },
+  { 13, 123, 63, 154, 64, 123, 73, 154, home_icon, EXT_GPIO_HOME_PIN, true },
+  { 13, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_ON, false},
+  { 13, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_AUTO, false},
+  { 13, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_ON, false},
+  { 13, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_AUTO, false},
+  { 13, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_COLD, false},      
+  { 13, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_WARM, false},
+  { 13, 259, 63, 290, 64, 259, 73, 290, settings_icon, 64, true },
+  { 359, 143, 413, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
+  { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
 };
 
 
@@ -136,6 +142,69 @@ void Display::begin() {
 }
 
 /**
+ * @brief Set the button tab on a particular button
+ * 
+ * @param gpio - the gpio number associated with the button
+ * @param on - the desired state of the tab (on, off or pending)
+ * 
+ * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
+ * only and not associated with a physical pin.
+ */
+void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
+{
+    LGFX_Sprite tab(this);
+    tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
+    tab.setColorDepth(16);                          // setup for RGB565
+    tab.fillSprite(0x0000);
+
+    if(state == TOUCH_TAB_STATE::ON) tab.pushImage(0, 0, TAB_WIDTH, TAB_HEIGHT, (lgfx::rgb565_t*)active_tab);           // push active background
+    else if(state == TOUCH_TAB_STATE::OFF) tab.pushImage(0, 0, TAB_WIDTH, TAB_HEIGHT, (lgfx::rgb565_t*)inactive_tab);   // push active background
+    else if(state == TOUCH_TAB_STATE::WAITING) tab.pushImage(0, 0, TAB_WIDTH, TAB_HEIGHT, (lgfx::rgb565_t*)pending_tab);// push pending background
+    else 
+    {
+        Logger.Error_f(F("Unsopported state %d. Only 0(ON), 1(OFF), and 3(PENDING) are supported. Ignoring"), state);
+        return;
+    }
+
+    for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
+    {
+        if(touch_areas[i].gpio == gpio)
+        {
+            tab.pushSprite(touch_areas[i].tab_x1, touch_areas[i].tab_y1, 0x0000);                                       // push sprite 
+        }
+    }                           
+}
+
+void Display::set_button(uint8_t gpio, touch_tab_state_t state)
+{
+    LGFX_Sprite button(this);
+    button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite
+    button.setColorDepth(16);                                              // setup for RGB565
+    button.fillSprite(0x0000);
+
+    if(state == TOUCH_TAB_STATE::ON) button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)active_button);           // push active background
+    else if(state == TOUCH_TAB_STATE::OFF) button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);   // push active background
+    else 
+    {
+        Logger.Error_f(F("Unsopported state %d. Only 0(ON), 1(OFF), and 3(PENDING) are supported. Ignoring"), state);
+        return;
+    }
+
+    for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
+    {
+        if(touch_areas[i].gpio == gpio)
+        {
+            if(touch_areas[i].icon != NULL)
+            {  
+                button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
+            }
+            button.pushSprite(touch_areas[i].icon_x1, touch_areas[i].icon_y1, 0x0000);                                          // push sprite 
+        }
+    }                           
+}
+
+
+/**
  * @brief Process the touch interrupt and call the callback if set
  * 
  * @remark This method is really to determine whether the touch is relevant and 
@@ -182,18 +251,13 @@ void Display::touch_runner(void* args)
             {
                 for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
                 {
-                    if(x >= touch_areas[i].x1 && x <= touch_areas[i].x2 && y >= touch_areas[i].y1 && y <= touch_areas[i].y2) 
+                    if(x >= touch_areas[i].icon_x1 && x <= touch_areas[i].icon_x2 && y >= touch_areas[i].icon_y1 && y <= touch_areas[i].icon_y2) 
                     {
-                        if(touch_areas[i].icon != NULL)
-                        {
-                            active.fillSprite(0x0000);
-                            active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)active_button);                  // push active background
-                            active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);    // push icon overlay
-                            active.pushSprite(touch_areas[i].x1, touch_areas[i].y1, 0x0000);                                                    // push sprite
-                            sprite_index = i;
-                        }
+                        if(touch_areas[i].enable == false) break;
                         uint8_t gpio = touch_areas[i].gpio;
+                        if(gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
                         if(gpio != UINT8_MAX && inputs[gpio].entry != nullptr) inputs[gpio].entry(gpio, inputs[gpio].command.c_str());
+                        sprite_index = i;
                         shouldProcess = false;
                         break;
                     }
@@ -213,13 +277,8 @@ void Display::touch_runner(void* args)
                 if(sprite_index != UINT8_MAX)
                 {
                     uint8_t gpio = touch_areas[sprite_index].gpio;
-                    if(inputs[gpio].exit != nullptr) inputs[gpio].exit(gpio, inputs[gpio].command.c_str());
-                    if(touch_areas[sprite_index].icon != NULL)
-                    {
-                        active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)inactive_button);                            // push active background
-                        active.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[sprite_index].icon, 0x0000);     // push icon overlay
-                        active.pushSprite(touch_areas[sprite_index].x1, touch_areas[sprite_index].y1, 0x0000);        
-                    }
+                    if(gpio != UINT8_MAX && inputs[gpio].exit != nullptr) inputs[gpio].exit(gpio, inputs[gpio].command.c_str());
+                    if(gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::OFF);
                     sprite_index = UINT8_MAX;
                 }
                 gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);

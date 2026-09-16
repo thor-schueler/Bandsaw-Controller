@@ -30,7 +30,7 @@ std::array<input_entry_t, 16> __inputs = {{
  */
 Inputs::Inputs()
 {
-    if(Inputs::pcf8575 == NULL) Inputs::pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, Inputs::on_PCF8575_input_changed);
+    if(Inputs::_pcf8575 == NULL) Inputs::_pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, Inputs::on_PCF8575_input_changed);
     __instances++;
 }
 
@@ -43,12 +43,17 @@ Inputs::~Inputs()
     __instances--;
     if(__instances == 0)
     {
-        if(Inputs::pcf8575 != NULL) delete Inputs::pcf8575;
-        if(Inputs::extendedGPIOWatcher != NULL)
+        if(Inputs::_pcf8575 != NULL) delete Inputs::_pcf8575;
+        if(Inputs::_extendedGPIOWatcher != NULL)
         {
-            vTaskDelete(Inputs::extendedGPIOWatcher); 
-            Inputs::extendedGPIOWatcher = NULL; 
+            vTaskDelete(Inputs::_extendedGPIOWatcher); 
+            Inputs::_extendedGPIOWatcher = NULL; 
         }
+    }
+    if(this->_wheelRunner != NULL)
+    {
+        vTaskDelete(this->_wheelRunner); 
+        this->_wheelRunner = NULL; 
     }
 }
 
@@ -59,14 +64,26 @@ Inputs::~Inputs()
 void Inputs::begin()
 {
     Logger.Info(F("... Setup Extended GPIO"));
-    for(int i=0; i<16; i++) Inputs::pcf8575->pinMode(i, INPUT);
-    Inputs::pcf8575->begin();
+    for(int i=0; i<16; i++) Inputs::_pcf8575->pinMode(i, INPUT);
+    Inputs:_pcf8575->begin();
 
-    if(Inputs::extendedGPIOWatcher == NULL)
+    if(Inputs::_extendedGPIOWatcher == NULL)
     {
         Logger.Info(F("... Configure Extended GPIO monitoring task"));
-        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::extendedGPIOWatcher, 0);
+        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::_extendedGPIOWatcher, 0);
     }
+
+    Logger.Info(F("... Setup GPIO pins"));
+    pinMode(WHEEL_A, INPUT);
+    pinMode(WHEEL_B, INPUT);
+
+    Logger.Info(F("... Attach event receivers for GPIO"));
+    attachInterruptArg(digitalPinToInterrupt(WHEEL_A), Inputs::handle_encoder_change, this, CHANGE);
+    attachInterruptArg(digitalPinToInterrupt(WHEEL_B), Inputs::handle_encoder_change, this, CHANGE);
+
+    Logger.Info("... Create various tasks");
+    xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 0);
+    //xTaskCreatePinnedToCore(ems_change_runner, "emsRunner", 1560, this, 1, &_emsChangeRunner, 0);
 }
 
 /**
@@ -135,7 +152,7 @@ void Inputs::extended_GPIO_watcher(void* args)
     for (;;) 
     { 
 
-        PCF8575::DigitalInput di = Inputs::pcf8575->digitalReadAll();
+        PCF8575::DigitalInput di = Inputs::_pcf8575->digitalReadAll();
         uint16_t bs = 0x0000;
         bs |= (!di.p0 & 0x01) << 0; 
         bs |= (!di.p1 & 0x01) << 1; 
@@ -178,24 +195,79 @@ void Inputs::extended_GPIO_watcher(void* args)
 }
 
 /**
+ * @brief Task function managing wheel movements. This task runs an endless blocking loop,
+ * waiting for notification from handle_encoder_change upon which it will process
+ * and execute the appropriate action.
+ * @param args - pointer to task arguments 
+ */
+void Inputs::wheel_runner(void* args)
+{
+    Inputs *_this = reinterpret_cast<Inputs *>(args);
+    Logger.Info(F("... Wheel Runner task has started."));
+    for (;;) 
+    { 
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // this section is executed for every wheel position change.
+        Logger.Info_f(F("Wheel change: position %d, direction %d"), _this->_wheel_position, _this->_direction);
+    }
+}
+
+
+/**
  * @brief Event handler handling input change events on the PCF8575 
  *
  */
-void Inputs::on_PCF8575_input_changed()
+void IRAM_ATTR Inputs::on_PCF8575_input_changed()
 {
-
     // debounce check to prevent double button presses. The PCF8575 can be a bit noisy and this has been 
     // found to be a reliable way to prevent it.
     BaseType_t xHigherPriorityTaskToken = pdFALSE;
     volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
     uint32_t currentTime = millis(); 
 
-    if ((currentTime - lastDebounceTime) > 250 && Inputs::extendedGPIOWatcher != NULL) 
+    if ((currentTime - lastDebounceTime) > 250 && Inputs::_extendedGPIOWatcher != NULL) 
     {     
-        vTaskNotifyGiveFromISR(Inputs::extendedGPIOWatcher, &xHigherPriorityTaskToken); 
+        vTaskNotifyGiveFromISR(Inputs::_extendedGPIOWatcher, &xHigherPriorityTaskToken); 
         portYIELD_FROM_ISR(xHigherPriorityTaskToken);
                 
         // Update the last debounce time 
         lastDebounceTime = currentTime; 
+    }
+}
+
+/**
+ * @brief Event handler watching the Quadradure encoder GPIOs.
+ * @param arg - argumnent passed to the handler, expected to be the instance of the calling object and can 
+ * be cast to Inputs*
+ */
+void IRAM_ATTR Inputs::handle_encoder_change(void* arg)
+{
+    Inputs *_this = reinterpret_cast<Inputs *>(arg);
+    static int8_t c = 0;
+    static const int8_t enconder_state_table[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+    int MSB = digitalRead(WHEEL_A); // Most significant bit 
+    int LSB = digitalRead(WHEEL_B); // Least significant bit 
+    int encoded = (MSB << 1) | LSB; // Combine the two signals 
+    if(encoded != _this->_wheel_encoded)
+    {
+        int sum = (_this->_wheel_encoded << 2) | encoded;  // Add the two previous bits 
+        c += enconder_state_table[sum];
+        if(c == 4 || c == -4)
+        {
+            _this->_wheel_position += c == 4 ? 1 : -1;
+            _this->_direction = c > 0 ? 1 : -1;
+            c = 0x0;
+            _this->_wheel_encoded = encoded;   // Update the last encoded value
+
+            // Signal our job to run the axis....
+            BaseType_t xHigherPriorityTaskToken = pdFALSE;
+            vTaskNotifyGiveFromISR(_this->_wheelRunner, &xHigherPriorityTaskToken); 
+            portYIELD_FROM_ISR(xHigherPriorityTaskToken);
+        }
+        else
+        {
+            _this->_wheel_encoded = encoded;   // Update the last encoded value  
+        }
     }
 }
