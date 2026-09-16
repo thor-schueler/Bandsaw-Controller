@@ -106,5 +106,5 @@ void loop()
   //if (!touchCommand.isEmpty()) {
   //  Logger.Info_f(F("Touch command received: %s"), touchCommand.c_str());
   //}
-  //Logger.Info_f("IRQ: %d", digitalRead(34));
+  //Logger.Info_f("IRQ: %d", digitalRead(36));
 }

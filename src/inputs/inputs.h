@@ -105,6 +105,16 @@ class Inputs {
      */
     void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd);
 
+
+    /**
+     * @brief Reads a specific GPIO on the PCF8575 extender.
+     * 
+     * @param gpio - GPIO to read
+     * @return uint8_t - the state of the GPIO
+     */
+    uint8_t digitalReadEx(uint8_t gpio);
+
+
   private: 
 
     /**

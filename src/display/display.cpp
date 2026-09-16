@@ -110,7 +110,7 @@ Display::~Display()
  * 
  */
 void Display::begin() {
-    Logger.Info(F("... Initializing display..."));
+    Logger.Info(F("... Initializing display controller..."));
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
    

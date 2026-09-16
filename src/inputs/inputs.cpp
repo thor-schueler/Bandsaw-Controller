@@ -7,7 +7,7 @@ uint8_t __instances = 0;
 
 std::array<input_entry_t, 16> __inputs = {{
     { nullptr, nullptr, EXT_GPIO_ENGAGE_PIN, "Engage Feed" },
-    { nullptr, nullptr, EXT_GPIO_START_PIN, "Start Blade" },
+    { nullptr, nullptr, EXT_GPIO_START_PIN, "Toggle Blade" },
     { nullptr, nullptr, EXT_GPIO_LIGHT_COLD, "Active Cold Light" },
     { nullptr, nullptr, EXT_GPIO_LIGHT_WARM, "Activate Warm Light" },
     { nullptr, nullptr, EXT_GPIO_AIR_ON, "Air Blast Always On" },
@@ -63,27 +63,30 @@ Inputs::~Inputs()
  */    
 void Inputs::begin()
 {
-    Logger.Info(F("... Setup Extended GPIO"));
+    Logger.Info(F("... Begin input controller execution."));
+    Logger.Info(F("...   Setup Extended GPIO"));
     for(int i=0; i<16; i++) Inputs::_pcf8575->pinMode(i, INPUT);
     Inputs:_pcf8575->begin();
 
     if(Inputs::_extendedGPIOWatcher == NULL)
     {
-        Logger.Info(F("... Configure Extended GPIO monitoring task"));
+        Logger.Info(F("...   Configure Extended GPIO monitoring task"));
         xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::_extendedGPIOWatcher, 0);
     }
 
-    Logger.Info(F("... Setup GPIO pins"));
+    Logger.Info(F("...   Setup GPIO pins"));
     pinMode(WHEEL_A, INPUT);
     pinMode(WHEEL_B, INPUT);
 
-    Logger.Info(F("... Attach event receivers for GPIO"));
+    Logger.Info(F("...   Attach event receivers for GPIO"));
     attachInterruptArg(digitalPinToInterrupt(WHEEL_A), Inputs::handle_encoder_change, this, CHANGE);
     attachInterruptArg(digitalPinToInterrupt(WHEEL_B), Inputs::handle_encoder_change, this, CHANGE);
 
-    Logger.Info("... Create various tasks");
+    Logger.Info(F("...   Create various tasks"));
     xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 0);
     //xTaskCreatePinnedToCore(ems_change_runner, "emsRunner", 1560, this, 1, &_emsChangeRunner, 0);
+
+    Logger.Info(F("...   Done."));
 }
 
 /**
@@ -185,7 +188,6 @@ void Inputs::extended_GPIO_watcher(void* args)
                 if (turned_on & (1u << i) && __inputs[i].entry != nullptr) __inputs[i].entry(__inputs[i].ext_gpio, __inputs[i].command.c_str());
                 if (turned_off & (1u << i) && __inputs[i].exit != nullptr) __inputs[i].exit(__inputs[i].ext_gpio, __inputs[i].command.c_str());
             }
-            Logger.Info_f(F("button state: %04X, %s"), button_state, s.c_str());
         }
         vTaskDelay(pdMS_TO_TICKS(10));
         
@@ -270,4 +272,15 @@ void IRAM_ATTR Inputs::handle_encoder_change(void* arg)
             _this->_wheel_encoded = encoded;   // Update the last encoded value  
         }
     }
+}
+
+/**
+ * @brief Reads a specific GPIO on the PCF8575 extender.
+ * 
+ * @param gpio - GPIO to read
+ * @return uint8_t - the state of the GPIO
+ */
+uint8_t Inputs::digitalReadEx(uint8_t gpio)
+{
+    return this->_pcf8575->digitalRead(gpio, true);
 }
