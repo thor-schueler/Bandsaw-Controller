@@ -348,7 +348,7 @@ void Display::homeing_animation_runner(void* args)
     Logger.Info(F("... Homing animation started."));
     for(;;)
     {
-        for(uint8_t frame = 0; frame < 20; frame++)
+        for(uint8_t frame = 0; frame < 60; frame++)
         {
             if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
             { 
@@ -383,195 +383,175 @@ void Display::start_homing_animation(bool& terminate)
 }
 
 
+#pragma region Homing animation methods
+/**
+ * @brief Draws a frame for the homing animation displayed during the homing cycle
+ * 
+ * @param frame - the frame index to draw.
+ */
 void Display::draw_homing_frame(uint8_t frame)
 {
-    frame %= 20;
+    frame %= 60;
 
-    const uint16_t LCARS_BLUE   = 0x0418;
-    const uint16_t LCARS_CYAN   = 0x75FF;
-    const uint16_t LCARS_ORANGE = 0xFD20;
-    const uint16_t LCARS_DGRAY  = 0x18C3;
-
-    fillRect(HOMING_X, HOMING_Y,
-             HOMING_W, HOMING_H,
-             TFT_BLACK);
-
-    //
-    // Engineering Grid
-    //
-    for(int x = 0; x < HOMING_W; x += 20)
+    if(this->_homingSprite == nullptr)
     {
-        drawFastVLine(
-            HOMING_X + x,
-            HOMING_Y,
-            HOMING_H,
-            LCARS_DGRAY);
+        this->_homingSprite = new LGFX_Sprite(this);
+        this->_homingSprite->createSprite(HOMING_W, HOMING_H);
+        this->_homingSprite->setColorDepth(16);
     }
+    this->_homingSprite->fillSprite(LCARS_GRAY);
 
-    for(int y = 0; y < HOMING_H; y += 20)
+    draw_homing_background();
+    draw_homing_scanner(frame);
+    draw_homing_carriage(frame);
+    draw_homing_reticle(frame);
+    draw_homing_status(frame);
+
+    this->_homingSprite->pushSprite(88, 95);
+}
+
+/**
+ * @brief Draws the background of a homing frame
+ * 
+ */
+void Display::draw_homing_background()
+{
+    //
+    // Grid
+    //
+    for(int x = 0; x < HOMING_W; x += 17) _homingSprite->drawFastVLine(x, 0, HOMING_H, LCARS_GRID);
+    for(int y = 0; y < HOMING_H; y += 17) _homingSprite->drawFastHLine(0, y, HOMING_W, LCARS_GRID);
+
+    //
+    // Feed axis rail
+    //
+    _homingSprite->drawFastHLine(20, HOMING_H/2, HOMING_W - 40, LCARS_BLUE);
+
+    //
+    // Home indicator
+    //
+    _homingSprite->fillTriangle(5, HOMING_H/2, 15, HOMING_H/2 - 10, 15, HOMING_H/2 + 10, LCARS_ORANGE);
+
+    //
+    // Pulsing beacon ring
+    //
+    _homingSprite->drawCircle(18, HOMING_H/2, 6, LCARS_ORANGE);
+    _homingSprite->setTextColor(LCARS_ORANGE, LCARS_GRAY);
+    _homingSprite->drawString("REFERENCE ACQUISITION", 10, 5);
+}
+
+/**
+ * @brief Draws the scanning line of the homing animation
+ * 
+ * @param frame - the frame index of the animation sequence
+ */
+void Display::draw_homing_scanner(uint8_t frame)
+{
+    uint8_t sweepFrame = frame % 20;
+    int x = (sweepFrame * (HOMING_W - 4)) / 19;
+
+    _homingSprite->drawFastVLine(x - 2, 0, HOMING_H, 0x2C7F);
+    _homingSprite->drawFastVLine(x - 1, 0, HOMING_H, 0x43FF);
+    _homingSprite->drawFastVLine(x, 0, HOMING_H, LCARS_CYAN);
+}
+
+/*
+void Display::draw_homing_scanner(uint8_t frame)
+{
+    constexpr uint16_t beam[] =
     {
-        drawFastHLine(
-            HOMING_X,
-            HOMING_Y + y,
-            HOMING_W,
-            LCARS_DGRAY);
-    }
+        0x0841, 0x1062, 0x1082, 0x18A3, 0x18C3, 0x2104, 0x2945, 0x3186, 0x39C7, 0x4208, 0x52AA, 0x63AE, 0x7513, 0x86B9, 0xA7DF,
+        0xFFFF, 0xA7DF, 0x86B9, 0x7513, 0x63AE, 0x52AA, 0x4208, 0x39C7, 0x3186, 0x2945, 0x2104, 0x18C3, 0x18A3, 0x1082, 0x1062, 0x0841
+    };
 
-    //
-    // Axis rail
-    //
-    drawFastHLine(
-        HOMING_X + 20,
-        HOMING_Y + 82,
-        HOMING_W - 40,
-        LCARS_BLUE);
+    uint8_t sweepFrame = frame % 20;
+    int x = (sweepFrame * (HOMING_W - 4))  / 19;
 
-    //
-    // HOME marker
-    //
-    fillTriangle(
-        HOMING_X + 5,
-        HOMING_Y + 82,
-        HOMING_X + 15,
-        HOMING_Y + 72,
-        HOMING_X + 15,
-        HOMING_Y + 92,
-        LCARS_ORANGE);
-
-    //
-    // HOME beacon pulse
-    //
-    int pulse = (frame % 6);
-
-    uint16_t pulseColor =
-        pulse == 0 ? 0xFB00 :
-        pulse == 1 ? 0xFC20 :
-        pulse == 2 ? 0xFD20 :
-        pulse == 3 ? 0xFFE0 :
-        pulse == 4 ? 0xFD20 :
-                     0xFB00;
-
-    drawCircle(
-        HOMING_X + 18,
-        HOMING_Y + 82,
-        6,
-        pulseColor);
-
-    //
-    // Moving scanner
-    //
-    uint16_t scanX =
-        HOMING_X +
-        ((HOMING_W - 10) * frame / 19);
-
-    drawFastVLine(scanX - 2,
-                  HOMING_Y,
-                  HOMING_H,
-                  0x19F3);
-
-    drawFastVLine(scanX - 1,
-                  HOMING_Y,
-                  HOMING_H,
-                  0x43FF);
-
-    drawFastVLine(scanX,
-                  HOMING_Y,
-                  HOMING_H,
-                  LCARS_CYAN);
-
-    //
-    // Acquired targets
-    //
-    for(auto& p : targets)
+    constexpr int halfWidth = 15;
+    for(int i = -halfWidth; i <= halfWidth; i++)
     {
-        if(scanX > HOMING_X + p.x)
-        {
-            fillCircle(
-                HOMING_X + p.x,
-                HOMING_Y + p.y,
-                3,
-                LCARS_CYAN);
-        }
+        int drawX = x + i;
+        if(drawX < 0 || drawX >= HOMING_W) continue;
+        _homingSprite->drawFastVLine(drawX, 0, HOMING_H, beam[i + halfWidth]);
     }
 
     //
-    // Candidate lock
+    // Hot center line
     //
-    if(frame >= 10)
+    _homingSprite->drawFastVLine(x, 0, HOMING_H, TFT_WHITE);
+}
+*/
+
+/*
+void Display::draw_homing_scanner(uint8_t frame)
+{
+    uint8_t sweepFrame = frame % 20;
+    int centerX = (sweepFrame * (HOMING_W - 4)) / 19;
+
+    // Symmetric horizontal intensity profile
+    constexpr uint16_t beam[] =
     {
-        const int tx = HOMING_X + 152;
-        const int ty = HOMING_Y + 95;
+        0x1082, 0x18C3, 0x2104, 0x2945, 0x3186, 0x39C7, 0x4208, 0x52AA, 0x63AE, 0x7513, 0x86B9, 0xA7DF, 0xD7FF, 0xEFFF, 0xFFFF, 0xEFFF, 0xD7FF,
+        0xA7DF, 0x86B9, 0x7513, 0x63AE, 0x52AA, 0x4208, 0x39C7, 0x3186, 0x2945, 0x2104, 0x18C3, 0x1082
+    };
 
-        int r = 8 + ((frame - 10) * 2);
-
-        drawCircle(tx, ty, r, LCARS_ORANGE);
-
-        drawFastHLine(tx - r - 5,
-                      ty,
-                      4,
-                      LCARS_ORANGE);
-
-        drawFastHLine(tx + r + 1,
-                      ty,
-                      4,
-                      LCARS_ORANGE);
-
-        drawFastVLine(tx,
-                      ty - r - 5,
-                      4,
-                      LCARS_ORANGE);
-
-        drawFastVLine(tx,
-                      ty + r + 1,
-                      4,
-                      LCARS_ORANGE);
-    }
-
-    //
-    // Feed carriage
-    //
-    int carriageX =
-        HOMING_X +
-        220 -
-        ((220 * frame) / 19);
-
-    fillRoundRect(
-        carriageX,
-        HOMING_Y + 67,
-        24,
-        30,
-        3,
-        LCARS_CYAN);
-
-    //
-    // Status Text
-    //
-    setTextColor(LCARS_CYAN);
-
-    drawString(
-        "REFERENCE ACQUISITION",
-        HOMING_X + 10,
-        HOMING_Y + 4);
-
-    if(frame < 10)
+    constexpr int halfWidth = sizeof(beam) / sizeof(beam[0]) / 2;
+    for(int i=-halfWidth; i<=halfWidth; i++)
     {
-        drawString(
-            "SEEKING AXIS REFERENCE",
-            HOMING_X + 60,
-            HOMING_Y + 135);
-    }
-    else if(frame < 16)
-    {
-        drawString(
-            "REFERENCE DETECTED",
-            HOMING_X + 75,
-            HOMING_Y + 135);
-    }
-    else
-    {
-        drawString(
-            "AXIS SYNCHRONIZED",
-            HOMING_X + 75,
-            HOMING_Y + 135);
+        int x = centerX + i;
+        if(x < 0 || x >= HOMING_W) continue;
+        _homingSprite->drawFastVLine(x, 0, HOMING_H, beam[i + halfWidth]);
     }
 }
+*/
+
+/**
+ * @brief Draws the moving carriage that is being homed.
+ * 
+ * @param frame - the frame index of the animation sequence
+ */
+void Display::draw_homing_carriage(uint8_t frame)
+{
+    int x = 225 - ((220 * frame) / 59);
+    _homingSprite->fillRoundRect(x, HOMING_H/2 - 14, 24, 28, 3, LCARS_CYAN);
+    _homingSprite->fillCircle(x + 26, HOMING_H/2 - 5, 2, LCARS_ORANGE);
+    _homingSprite->fillCircle(x + 26, HOMING_H/2 + 5, 2, LCARS_ORANGE);
+}
+
+/**
+ * @brief Draws the homing reticle
+ * 
+ * @param frame - the frame index of the animation sequence
+ */
+void Display::draw_homing_reticle(uint8_t frame)
+{
+    if(frame < 20) return;
+
+    int radius = 8 + ((frame - 20) / 2);
+    if(radius > 24) radius = 24;
+
+    constexpr int cx = 18; //152;
+    constexpr int cy = HOMING_H / 2; //86;
+
+    _homingSprite->drawCircle(cx, cy, radius, LCARS_ORANGE);
+    _homingSprite->drawFastHLine(cx - radius - 6, cy, 5, LCARS_ORANGE);
+    _homingSprite->drawFastHLine(cx + radius + 1, cy, 5, LCARS_ORANGE);
+    _homingSprite->drawFastVLine(cx, cy - radius - 6, 5, LCARS_ORANGE);
+    _homingSprite->drawFastVLine(cx, cy + radius + 1, 5, LCARS_ORANGE);
+}
+
+/**
+ * @brief Draws the homing status message into the frame
+ * 
+ * @param frame - the frame index of the animation sequence
+ */
+void Display::draw_homing_status(uint8_t frame)
+{
+    if(frame < 20 || (frame > 30 && frame < 40) || (frame > 50 && frame < 60))
+    {
+        _homingSprite->setTextColor(LCARS_CYAN, LCARS_GRAY);
+        _homingSprite->drawString("SEEKING HOME", 5, 135);
+    }
+}
+#pragma endregion
+

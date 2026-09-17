@@ -48,26 +48,6 @@ extern const uint16_t lube_icon[] PROGMEM;
 extern const uint16_t light_icon[] PROGMEM;
 extern const uint16_t settings_icon[] PROGMEM;
 
-#define HOMING_X 85
-#define HOMING_Y 90
-#define HOMING_W 265
-#define HOMING_H 160
-
-static const struct
-{
-uint16_t x;
-uint16_t y;
-} targets[] =
-{
-{ 62, 32 },
-{ 118, 58 },
-{ 152, 95 },
-{ 201, 71 },
-{ 234, 42 },
-{ 184, 121 }
-};
-
-
 /**
  * @brief Structure to define the area and behavior of a touch function. 
  * 
@@ -86,11 +66,25 @@ typedef struct {
   bool enable;
 } touch_area_t;
 
+/**
+ * @brief Type to represent the touch state
+ * 
+ */
 typedef enum TOUCH_TAB_STATE{
   ON,
   OFF,
   WAITING
 } touch_tab_state_t;
+
+static constexpr int HOMING_W = 255;
+static constexpr int HOMING_H = 170;
+
+static constexpr uint16_t LCARS_GRID   = 0x2945;
+static constexpr uint16_t LCARS_BLUE   = 0x0418;
+static constexpr uint16_t LCARS_CYAN   = 0x75FF;
+static constexpr uint16_t LCARS_ORANGE = 0xFD20;
+static constexpr uint16_t LCARS_GRAY   = 0x1082;
+
 
 /**
  * @brief The Display class is a wrapper around the LovyanGFX library that provides an interface for 
@@ -182,6 +176,11 @@ public:
 
   protected:
 
+    /**
+     * @brief Draws a frame for the homing animation displayed during the homing cycle
+     * 
+     * @param frame - the frame index to draw.
+     */  
     void draw_homing_frame(uint8_t frame);
 
     /**
@@ -213,8 +212,47 @@ public:
      */
     void IRAM_ATTR processTouchInterrupt();
 
+    #pragma region homing animation methods
+    /**
+     * @brief Draws the background of a homing frame
+     * 
+     */
+    void draw_homing_background();
+
+    /**
+     * @brief Draws the scanning line of the homing animation
+     * 
+     * @param frame - the frame index of the animation sequence
+     */
+    void draw_homing_scanner(uint8_t frame);
+    
+
+    void draw_homing_targets(uint8_t frame);
+    
+    /**
+     * @brief Draws the moving carriage that is being homed.
+     * 
+     * @param frame - the frame index of the animation sequence
+     */
+    void draw_homing_carriage(uint8_t frame);
+    
+    /**
+     * @brief Draws the homing reticle
+     * 
+     * @param frame - the frame index of the animation sequence
+     */
+    void draw_homing_reticle(uint8_t frame);
+    
+    /**
+     * @brief Draws the homing status into the frame
+     * 
+     * @param frame - the frame index of the animation sequence
+     */
+    void draw_homing_status(uint8_t frame);
+    #pragma endregion
 
 
+    LGFX_Sprite* _homingSprite = nullptr;
     bool _paused = false;
     bool*  _homing_animation_break = nullptr;
     TaskHandle_t _touchRunner = NULL;
