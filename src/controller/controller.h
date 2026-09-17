@@ -90,6 +90,8 @@ class Controller
          */
         void EMS_change(uint8_t gpio, const char* command);
 
+        void home(uint8_t gpio, const char* command);
+
 
     private:
 

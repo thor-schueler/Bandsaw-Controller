@@ -311,3 +311,207 @@ void Display::touch_runner(void* args)
     }
     if(_this->_touchRunner != NULL) { vTaskDelete(_this->_touchRunner); _this->_touchRunner = NULL; }
 }
+
+
+// ---------------------------------------------------------------------
+// HOMING ANIMATION
+// Work area:
+// x = 80
+// y = 60
+// w = 270
+// h = 160
+// ---------------------------------------------------------------------
+
+
+void Display::draw_homing_frame(uint8_t frame)
+{
+    frame %= 20;
+
+    const uint16_t LCARS_BLUE   = 0x0418;
+    const uint16_t LCARS_CYAN   = 0x75FF;
+    const uint16_t LCARS_ORANGE = 0xFD20;
+    const uint16_t LCARS_DGRAY  = 0x18C3;
+
+    fillRect(HOMING_X, HOMING_Y,
+             HOMING_W, HOMING_H,
+             TFT_BLACK);
+
+    //
+    // Engineering Grid
+    //
+    for(int x = 0; x < HOMING_W; x += 20)
+    {
+        drawFastVLine(
+            HOMING_X + x,
+            HOMING_Y,
+            HOMING_H,
+            LCARS_DGRAY);
+    }
+
+    for(int y = 0; y < HOMING_H; y += 20)
+    {
+        drawFastHLine(
+            HOMING_X,
+            HOMING_Y + y,
+            HOMING_W,
+            LCARS_DGRAY);
+    }
+
+    //
+    // Axis rail
+    //
+    drawFastHLine(
+        HOMING_X + 20,
+        HOMING_Y + 82,
+        HOMING_W - 40,
+        LCARS_BLUE);
+
+    //
+    // HOME marker
+    //
+    fillTriangle(
+        HOMING_X + 5,
+        HOMING_Y + 82,
+        HOMING_X + 15,
+        HOMING_Y + 72,
+        HOMING_X + 15,
+        HOMING_Y + 92,
+        LCARS_ORANGE);
+
+    //
+    // HOME beacon pulse
+    //
+    int pulse = (frame % 6);
+
+    uint16_t pulseColor =
+        pulse == 0 ? 0xFB00 :
+        pulse == 1 ? 0xFC20 :
+        pulse == 2 ? 0xFD20 :
+        pulse == 3 ? 0xFFE0 :
+        pulse == 4 ? 0xFD20 :
+                     0xFB00;
+
+    drawCircle(
+        HOMING_X + 18,
+        HOMING_Y + 82,
+        6,
+        pulseColor);
+
+    //
+    // Moving scanner
+    //
+    uint16_t scanX =
+        HOMING_X +
+        ((HOMING_W - 10) * frame / 19);
+
+    drawFastVLine(scanX - 2,
+                  HOMING_Y,
+                  HOMING_H,
+                  0x19F3);
+
+    drawFastVLine(scanX - 1,
+                  HOMING_Y,
+                  HOMING_H,
+                  0x43FF);
+
+    drawFastVLine(scanX,
+                  HOMING_Y,
+                  HOMING_H,
+                  LCARS_CYAN);
+
+    //
+    // Acquired targets
+    //
+    for(auto& p : targets)
+    {
+        if(scanX > HOMING_X + p.x)
+        {
+            fillCircle(
+                HOMING_X + p.x,
+                HOMING_Y + p.y,
+                3,
+                LCARS_CYAN);
+        }
+    }
+
+    //
+    // Candidate lock
+    //
+    if(frame >= 10)
+    {
+        const int tx = HOMING_X + 152;
+        const int ty = HOMING_Y + 95;
+
+        int r = 8 + ((frame - 10) * 2);
+
+        drawCircle(tx, ty, r, LCARS_ORANGE);
+
+        drawFastHLine(tx - r - 5,
+                      ty,
+                      4,
+                      LCARS_ORANGE);
+
+        drawFastHLine(tx + r + 1,
+                      ty,
+                      4,
+                      LCARS_ORANGE);
+
+        drawFastVLine(tx,
+                      ty - r - 5,
+                      4,
+                      LCARS_ORANGE);
+
+        drawFastVLine(tx,
+                      ty + r + 1,
+                      4,
+                      LCARS_ORANGE);
+    }
+
+    //
+    // Feed carriage
+    //
+    int carriageX =
+        HOMING_X +
+        220 -
+        ((220 * frame) / 19);
+
+    fillRoundRect(
+        carriageX,
+        HOMING_Y + 67,
+        24,
+        30,
+        3,
+        LCARS_CYAN);
+
+    //
+    // Status Text
+    //
+    setTextColor(LCARS_CYAN);
+
+    drawString(
+        "REFERENCE ACQUISITION",
+        HOMING_X + 10,
+        HOMING_Y + 4);
+
+    if(frame < 10)
+    {
+        drawString(
+            "SEEKING AXIS REFERENCE",
+            HOMING_X + 60,
+            HOMING_Y + 135);
+    }
+    else if(frame < 16)
+    {
+        drawString(
+            "REFERENCE DETECTED",
+            HOMING_X + 75,
+            HOMING_Y + 135);
+    }
+    else
+    {
+        drawString(
+            "AXIS SYNCHRONIZED",
+            HOMING_X + 75,
+            HOMING_Y + 135);
+    }
+}

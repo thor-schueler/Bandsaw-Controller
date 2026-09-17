@@ -48,6 +48,26 @@ extern const uint16_t lube_icon[] PROGMEM;
 extern const uint16_t light_icon[] PROGMEM;
 extern const uint16_t settings_icon[] PROGMEM;
 
+#define HOMING_X 85
+#define HOMING_Y 90
+#define HOMING_W 265
+#define HOMING_H 160
+
+static const struct
+{
+uint16_t x;
+uint16_t y;
+} targets[] =
+{
+{ 62, 32 },
+{ 118, 58 },
+{ 152, 95 },
+{ 201, 71 },
+{ 234, 42 },
+{ 184, 121 }
+};
+
+
 /**
  * @brief Structure to define the area and behavior of a touch function. 
  * 
@@ -137,6 +157,8 @@ public:
      */
     void ems_overlay(bool active);
 
+    void draw_homing_frame(uint8_t frame);
+
   protected:
 
     /**
@@ -161,6 +183,9 @@ public:
      * 
      */
     void IRAM_ATTR processTouchInterrupt();
+
+
+
 
     TaskHandle_t _touchRunner;
 };

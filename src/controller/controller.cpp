@@ -47,7 +47,7 @@ void Controller::begin()
 
     this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
     this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::home, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
     this->_inputs->register_command(EXT_GPIO_LIGHT_COLD, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2));
     this->_inputs->register_command(EXT_GPIO_LIGHT_WARM, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2));
     this->_inputs->register_command(EXT_GPIO_AIR_ON, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2));
@@ -113,7 +113,9 @@ void Controller::manage_lights(uint8_t gpio, const char* command)
  */         
 void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
 {
-    
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
+            // do nothing when EMS (active low) is active. 
+
     if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
@@ -248,6 +250,20 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
     }
 }
 
+
+void Controller::home(uint8_t gpio, const char* command)
+{
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
+            // do nothing when EMS (active low) is active. 
+
+    this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
+    this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+    for(uint8_t frame = 0; frame < 20; frame++)
+    {
+        this->_display->draw_homing_frame(frame);
+        vTaskDelay(pdMS_TO_TICKS(75));
+    }
+}    
 
 
 void Controller::switch_on(uint8_t gpio, const char* command)
