@@ -29,7 +29,7 @@ SerialLogger::SerialLogger()
   {
     gen_malloc = ps_malloc;
   };
-  this->logger_mutex = xSemaphoreCreateMutex();
+  this->logger_mutex = xSemaphoreCreateMutex(); xSemaphoreGive(this->logger_mutex);
 }
 
 
@@ -61,6 +61,7 @@ void SerialLogger::Info(String message)
 size_t SerialLogger::Info_f(String format, ...)
 {
   char *buf = NULL;
+  int len = 0;
   va_list arg;
   va_list copy;
   if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
@@ -68,33 +69,30 @@ size_t SerialLogger::Info_f(String format, ...)
     Serial.print("; ");
     this->writeTime();
     Serial.print(F(" [INFO] "));
-    xSemaphoreGive(this->logger_mutex);
-  }
   
-  va_start(arg, format);
-  va_copy(copy, arg);
-  int len = vsnprintf(NULL, 0, format.c_str(), arg);
-    // determine the length first, before we attempt the actual conversion 
-  if(len < 0) {
-    // error condition, most likely in the format string. 
-    va_end(arg);
-    va_end(copy);
-    return 0;
-  };
+    va_start(arg, format);
+    va_copy(copy, arg);
+    len = vsnprintf(NULL, 0, format.c_str(), arg);
+      // determine the length first, before we attempt the actual conversion 
+    if(len < 0) {
+      // error condition, most likely in the format string. 
+      va_end(arg);
+      va_end(copy);
+      return 0;
+    };
 
-  // allocate memory for the operation
-  buf = (char*) gen_malloc(len+1);
-  if(buf == NULL) {
-    // memory allocation error. 
+    // allocate memory for the operation
+    buf = (char*) gen_malloc(len+1);
+    if(buf == NULL) {
+      // memory allocation error. 
+      va_end(arg);
+      va_end(copy);
+      return 0;
+    } 
+    len = vsnprintf(buf, len+1, format.c_str(), copy);
     va_end(arg);
     va_end(copy);
-    return 0;
-  } 
-  len = vsnprintf(buf, len+1, format.c_str(), copy);
-  va_end(arg);
-  va_end(copy);
-  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
-  {
+
     len = Serial.print(buf);
     Serial.println();
     xSemaphoreGive(this->logger_mutex);
@@ -132,6 +130,7 @@ void SerialLogger::Error(String message)
 size_t SerialLogger::Error_f(String format, ...)
 {
   char *buf = NULL;
+  int len = 0;
   va_list arg;
   va_list copy;
   if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
@@ -139,31 +138,28 @@ size_t SerialLogger::Error_f(String format, ...)
     Serial.print("; ");
     this->writeTime();
     Serial.print(F(" [ERROR] "));
-    xSemaphoreGive(this->logger_mutex);
-  }
 
-  va_start(arg, format);
-  va_copy(copy, arg);
-  int len = vsnprintf(NULL, 0, format.c_str(), arg);
-  if(len < 0) {
-    // error condition, most likely in the format string. 
+    va_start(arg, format);
+    va_copy(copy, arg);
+    len = vsnprintf(NULL, 0, format.c_str(), arg);
+    if(len < 0) {
+      // error condition, most likely in the format string. 
+      va_end(arg);
+      va_end(copy);
+      return 0;
+    };
+    // allocate memory for the operation
+    buf = (char*) gen_malloc(len+1);
+    if(buf == NULL) {
+      // memory allocation error. 
+      va_end(arg);
+      va_end(copy);
+      return 0;
+    } 
+    len = vsnprintf(buf, len+1, format.c_str(), copy);
     va_end(arg);
     va_end(copy);
-    return 0;
-  };
-  // allocate memory for the operation
-  buf = (char*) gen_malloc(len+1);
-  if(buf == NULL) {
-    // memory allocation error. 
-    va_end(arg);
-    va_end(copy);
-    return 0;
-  } 
-  len = vsnprintf(buf, len+1, format.c_str(), copy);
-  va_end(arg);
-  va_end(copy);
-  if (xSemaphoreTake(this->logger_mutex, portMAX_DELAY))
-  { 
+
     len = Serial.print(buf);
     Serial.println();
     xSemaphoreGive(this->logger_mutex);
