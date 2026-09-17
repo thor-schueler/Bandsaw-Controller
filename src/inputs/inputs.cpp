@@ -68,11 +68,7 @@ void Inputs::begin()
     for(int i=0; i<16; i++) Inputs::_pcf8575->pinMode(i, INPUT);
     Inputs:_pcf8575->begin();
 
-    if(Inputs::_extendedGPIOWatcher == NULL)
-    {
-        Logger.Info(F("...   Configure Extended GPIO monitoring task"));
-        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::_extendedGPIOWatcher, 0);
-    }
+
 
     Logger.Info(F("...   Setup GPIO pins"));
     pinMode(WHEEL_A, INPUT);
@@ -84,9 +80,21 @@ void Inputs::begin()
 
     Logger.Info(F("...   Create various tasks"));
     xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 0);
-    //xTaskCreatePinnedToCore(ems_change_runner, "emsRunner", 1560, this, 1, &_emsChangeRunner, 0);
 
     Logger.Info(F("...   Done."));
+}
+
+/**
+ * @brief Starts the extended GPIO monitoring task
+ * 
+ */
+void Inputs::start_monitoring()
+{
+    if(Inputs::_extendedGPIOWatcher == NULL)
+    {
+        Logger.Info(F("...   Configure Extended GPIO monitoring task"));
+        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::_extendedGPIOWatcher, 0);
+    }
 }
 
 /**
@@ -195,6 +203,9 @@ void Inputs::extended_GPIO_watcher(void* args)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 }
+
+
+
 
 /**
  * @brief Task function managing wheel movements. This task runs an endless blocking loop,

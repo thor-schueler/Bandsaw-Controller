@@ -63,8 +63,8 @@ Display::Display() {
       cfg.offset_x      = 0;
       cfg.offset_y      = 0;
       cfg.offset_rotation = 0;
-      cfg.dummy_read_pixel = 0;
-      cfg.dummy_read_bits  = 0;
+      cfg.dummy_read_pixel = 8;
+      cfg.dummy_read_bits  = 1;
       cfg.readable      = true;
       cfg.invert        = false;
       cfg.rgb_order     = false;
@@ -118,12 +118,6 @@ void Display::begin() {
     this->init();
     this->setRotation(1);           // Landscape
     this->fillScreen(TFT_BLACK);
-    this->setTextColor(TFT_WHITE);
-    this->setTextSize(1);
-
-    this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
-    this->setCursor(370, 5);
-    this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
@@ -142,6 +136,20 @@ void Display::begin() {
 }
 
 /**
+ * @brief Draws the image background and static overlays.
+ * 
+ */
+void Display::draw_canvas()
+{
+    this->setTextColor(TFT_WHITE);
+    this->setTextSize(1);
+
+    this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
+    this->setCursor(370, 5);
+    this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
+}
+
+/**
  * @brief Set the button tab on a particular button
  * 
  * @param gpio - the gpio number associated with the button
@@ -153,8 +161,8 @@ void Display::begin() {
 void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite tab(this);
-    tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
     tab.setColorDepth(16);                          // setup for RGB565
+    tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
     tab.fillSprite(0x0000);
 
     if(state == TOUCH_TAB_STATE::ON) tab.pushImage(0, 0, TAB_WIDTH, TAB_HEIGHT, (lgfx::rgb565_t*)active_tab);           // push active background
@@ -178,8 +186,8 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite button(this);
-    button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite
     button.setColorDepth(16);                                              // setup for RGB565
+    button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite
     button.fillSprite(0x0000);
 
     if(state == TOUCH_TAB_STATE::ON) button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)active_button);           // push active background
@@ -203,6 +211,22 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
     }                           
 }
 
+/**
+ * @brief Manages the EMS overlay.
+ * 
+ * @param active - true to activate the EMS overlay, false to deactivate it. 
+ */
+void Display::ems_overlay(bool active)
+{
+    if(active)
+    {
+        this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
+    }
+    else
+    {
+        this->draw_canvas();
+    }
+}
 
 /**
  * @brief Process the touch interrupt and call the callback if set
@@ -224,7 +248,6 @@ void IRAM_ATTR Display::processTouchInterrupt()
     }
 }
 
-
 /**
  * @brief Task function managing the display
  * @param args - pointer to task arguments
@@ -238,8 +261,8 @@ void Display::touch_runner(void* args)
     auto& inputs = Inputs::get_inputs();
     Display *_this = reinterpret_cast<Display *>(args);
     LGFX_Sprite active(_this);
+    active.setColorDepth(16);                                               // setup for RGB565    
     active.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);         // create sprite
-    active.setColorDepth(16);                                               // setup for RGB565
     Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {

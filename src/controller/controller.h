@@ -36,39 +36,10 @@ class Controller
          */
         void begin();
 
-        String get_touch_command()
-        {
-            String command = this->_touch_command;
-            this->_touch_command = "";
-            return command;
-        }
-
     protected:
 
         /**
-         * @brief Workflow to switch the warm lights on. The lights are actually directly activated
-         * via the switch, so this is just reflecting the state on the display
-         * 
-         * @param gpio - GPIO for the warm light indicator.
-         * @param command - Command name passed in from the input watcher
-         * 
-         * @remarks - the function signature is a delegate for the input watcher
-         */
-        void warm_lights_on(uint8_t gpio, const char* command);
-
-        /**
-         * @brief Workflow to switch the bright lights on. The lights are actually directly activated
-         * via the switch, so this is just reflecting the state on the display
-         * 
-         * @param gpio - GPIO for the bright light indicator.
-         * @param command - Command name passed in from the input watcher
-         * 
-         * @remarks - the function signature is a delegate for the input watcher
-         */        
-        void bright_lights_on(uint8_t gpio, const char* command);
-
-        /**
-         * @brief Workflow to switch the lights (either warm or cold) off. The lights are actually directly activated
+         * @brief Workflow to manage the lights (either warm or cold) off. The lights are actually directly activated
          * via the switch, so this is just reflecting the state on the display
          * 
          * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
@@ -76,7 +47,7 @@ class Controller
          * 
          * @remarks - the function signature is a delegate for the input watcher
          */        
-        void lights_off(uint8_t gpio, const char* command);
+        void manage_lights(uint8_t gpio, const char* command);
 
         /**
          * @brief Workflow to toggle the saw blade on or off. 
@@ -108,6 +79,17 @@ class Controller
          */ 
         void manage_coolant(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Handles EMS button changes
+         * 
+         * @param gpio - GPIO for the start/stop toggle.
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the actual EMS shutdown is performed via physical switch. The handler is responsible
+         * for auxiliary shutdowns such as air and lubricant and feed
+         */
+        void EMS_change(uint8_t gpio, const char* command);
+
 
     private:
 
@@ -129,7 +111,7 @@ class Controller
         Motion* _motion = nullptr;
         String _touch_command;
         bool _enable_backlight = true;
-        bool _is_EMS_active = false;
+
 };
 
 

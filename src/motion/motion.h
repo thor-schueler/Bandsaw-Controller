@@ -57,6 +57,12 @@ enum class COOLANT_STATE : uint8_t {
 };
 using coolant_state_t = COOLANT_STATE; 
 
+enum class EMS_STATE : bool {
+    RUNNING,
+    SHUTDOWN
+};
+using ems_state_t = EMS_STATE; 
+
 /**
  * @brief Manages the blade movement, feed movement and other ciritcal items for bandsaw.
  * 
@@ -124,6 +130,17 @@ class Motion
          */
         coolant_state_t manage_coolant(uint8_t gpio_on, uint8_t gpio_auto);
 
+        /**
+         * @brief Manages the EMS shutdown and startup
+         * 
+         * @param gpio_state - the state of the EMS gpio pin
+         * @return ems_state_t - The actual EMS state
+         * 
+         * @remarks - the actual EMS shutdown is performed via physical switch. The handler is responsible
+         * for auxiliary shutdowns such as air and lubricant and feed
+         */
+        ems_state_t manage_ems_state(uint8_t gpio_state);
+
     protected:
 
         /**
@@ -148,7 +165,7 @@ class Motion
         bool _home_limit = false;
         bool _feed_limit = false;
         bool _stall_alert = false;
-        bool _is_EMS_active = false;
+        ems_state_t _ems_state = EMS_STATE::RUNNING;
         air_state_t _air_state = AIR_STATE::OFF;
         coolant_state_t _coolant_state = COOLANT_STATE::OFF;
 

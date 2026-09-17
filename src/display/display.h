@@ -18,7 +18,7 @@
 #define TOUCH_IRQ_PIN   22
 
 #define SPI_BUS_WRITE_FREQUENCY 40000000
-#define SPI_BUS_READ_FREQUENCY 16000000
+#define SPI_BUS_READ_FREQUENCY  4000000
 #define SPI_BUS_TOUCH_FREQUENCY 2000000
 
 #define DISPLAY_WIDTH  320
@@ -34,6 +34,7 @@
 #define TAB_WIDTH 10
 #define TAB_HEIGHT 32
 extern const uint16_t background[] PROGMEM;
+extern const uint16_t ems[] PROGMEM;
 extern const uint16_t active_button[] PROGMEM;
 extern const uint16_t active_tab[] PROGMEM;
 extern const uint16_t inactive_button[] PROGMEM;
@@ -102,6 +103,12 @@ public:
     void begin();
 
     /**
+     * @brief Draws the image background and static overlays.
+     * 
+     */
+    void draw_canvas();
+
+    /**
      * @brief Set the icon and background for a button
      * 
      * @param gpio - the gpio number associated with the button
@@ -122,6 +129,13 @@ public:
      * only and not associated with a physical pin.
      */
     void set_button_tab(uint8_t gpio, touch_tab_state_t state);
+
+    /**
+     * @brief Manages the EMS overlay.
+     * 
+     * @param active - true to activate the EMS overlay, false to deactivate it. 
+     */
+    void ems_overlay(bool active);
 
   protected:
 

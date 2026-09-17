@@ -86,6 +86,12 @@ class Inputs {
     void begin();
 
     /**
+     * @brief Starts the extended GPIO monitoring task
+     * 
+     */
+    void start_monitoring();
+
+    /**
      * @brief Registers a command for a specific GPIO
      * 
      * @param gpio  - the gpio that will invoke the command 

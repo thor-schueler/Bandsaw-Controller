@@ -150,7 +150,7 @@ blade_state_t Motion::get_blade_status()
  */
 blade_state_t Motion::activate_blade()
 {
-    if(this->_is_EMS_active) 
+    if(this->_ems_state == EMS_STATE::SHUTDOWN) 
     {
         digitalWrite(POWER_RELAY_PIN, HIGH);
         Logger.Info(F("... Received request to activate blade, but EMS is toggled. Ignore..."));
@@ -173,12 +173,6 @@ blade_state_t Motion::activate_blade()
  */
 blade_state_t Motion::deactivate_blade()
 {
-        if(this->_is_EMS_active) 
-    {
-        digitalWrite(POWER_RELAY_PIN, HIGH);
-        Logger.Info(F("... Received request to de-activate blade, but EMS is toggled. Ignore..."));
-        return BLADE_STATE::STOPPED;
-    }
     if(this->get_blade_status() == BLADE_STATE::STOPPED)
     {
         Logger.Info(F("... Received request to deactivate blade, blade is already stopped. Ignore..."));
@@ -211,13 +205,17 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto)
     }
     if(gpio_on == HIGH)
     {
-        digitalWrite(SOLENOID_A_PIN, LOW);
-        Logger.Info(F("... Air blast solendoid switched on"));
-
         //
         // TODO - remove monitoring task if necessary
         //
 
+        if(this->_ems_state == EMS_STATE::SHUTDOWN)
+        {
+            Logger.Info(F("... Air blast activation request received, but EMS is active. Ignoring..."));
+            return AIR_STATE::AUTO;   
+        }
+        digitalWrite(SOLENOID_A_PIN, LOW);
+        Logger.Info(F("... Air blast solendoid switched on"));
         return AIR_STATE::ON;
     }
     if(gpio_auto)
@@ -250,6 +248,12 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto)
     }
     if(gpio_on == HIGH)
     {
+        if(this->_ems_state == EMS_STATE::SHUTDOWN)
+        {
+            Logger.Info(F("... Coolant activation request received, but EMS is active. Ignoring..."));
+            return COOLANT_STATE::AUTO;   
+        }
+        
         digitalWrite(SOLENOID_B_PIN, LOW);
         Logger.Info(F("... Coolant solendoid switched on"));
         return COOLANT_STATE::ON;
@@ -260,4 +264,39 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto)
         Logger.Info(F("... Coolant solendoid switched to auto. Monitoring feed has started"));
         return COOLANT_STATE::AUTO;       
     }
+}
+
+/**
+ * @brief Manages the EMS shutdown and startup
+ * 
+ * @param gpio_state - the state of the EMS gpio pin
+ * @return ems_state_t - The actual EMS state (active low)
+ * 
+ * @remarks - the actual EMS shutdown is performed via physical switch. The handler is responsible
+ * for auxiliary shutdowns such as air and lubricant and feed
+ */
+ems_state_t Motion::manage_ems_state(uint8_t gpio_state)
+{
+    if(!gpio_state)
+    {
+        // shudown feed first
+        digitalWrite(EN_PIN, HIGH);             // active low
+
+        // shutdown pwoer relay 
+        digitalWrite(POWER_RELAY_PIN, HIGH);    // active low
+                                                // the power is already physically  disconnected 
+                                                // physically via the EMS switch
+
+        // shutdown solenoids
+        digitalWrite(SOLENOID_A_PIN, HIGH);     // active low
+        digitalWrite(SOLENOID_B_PIN, HIGH);     // active low
+        Logger.Info(F("... Emergency shutdown performed, blade, feed and solenoids have been shutdown."));
+        this->_ems_state = EMS_STATE::SHUTDOWN;
+    }
+    else
+    {
+        this->_ems_state = EMS_STATE::RUNNING;
+        Logger.Info(F("... Emergency shutdown cleared"));
+    }
+    return this->_ems_state;
 }
