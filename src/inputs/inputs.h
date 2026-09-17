@@ -46,6 +46,7 @@ typedef struct input_entry
     std::function<void(uint8_t gpio, const char*)> exit;
     int ext_gpio;
     String command;
+    bool can_be_paused;
 
 } input_entry_t;
 
@@ -92,13 +93,27 @@ class Inputs {
     void start_monitoring();
 
     /**
+     * @brief Pauses Monitoring for all commands that are allowed to pause
+     * 
+     */
+    void pause_monitoring();
+
+    /**
+     * @brief Resumes Monitoring for commands that are paused
+     * 
+     */    
+    void resume_monitoring();
+
+
+    /**
      * @brief Registers a command for a specific GPIO
      * 
      * @param gpio  - the gpio that will invoke the command 
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
-     * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+     * @param exit  - the function to call when the GPIO goes inactuve (high). NULL if no function should be called.
+     * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit);
+    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause);
 
 
     /**
@@ -108,9 +123,9 @@ class Inputs {
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
      * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
      * @param cmd   - the title of the command. 
+     * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd);
-
+    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
 
     /**
      * @brief Reads a specific GPIO on the PCF8575 extender.
@@ -160,6 +175,7 @@ class Inputs {
     int16_t _wheel_encoded = 0x0;
     int16_t _wheel_position = 0x0;
     int8_t _direction = 0;
+    bool _pause = false;
 
 };
 

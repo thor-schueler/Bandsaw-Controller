@@ -111,13 +111,20 @@ Display::~Display()
  */
 void Display::begin() {
     Logger.Info(F("... Initializing display controller..."));
+    Logger.Info(F("....Generating Mutexes"));
+    _display_mutex = xSemaphoreCreateBinary();  xSemaphoreGive(_display_mutex);
+
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
    
     Logger.Info(F("...   Initialize display"));
-    this->init();
-    this->setRotation(1);           // Landscape
-    this->fillScreen(TFT_BLACK);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    { 
+        this->init();
+        this->setRotation(1);           // Landscape
+        this->fillScreen(TFT_BLACK);
+        xSemaphoreGive(this->_display_mutex);
+    }
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
@@ -125,11 +132,15 @@ void Display::begin() {
     Logger.Info(F("...   Regsiter Touch interrupts"));
     uint8_t ctrl = 0b10010000;
     attachInterrupt(digitalPinToInterrupt(TOUCH_IRQ_PIN), std::bind(&Display::processTouchInterrupt, this), FALLING);
-    lgfx::spi::beginTransaction(SPI2_HOST, SPI_BUS_TOUCH_FREQUENCY, 0);
-    lgfx::gpio_lo(CS_TOUCH_PIN);
-    lgfx::spi::writeBytes(SPI2_HOST, &ctrl, 1);   // PD1=0, PD0=0 → IRQ enabled
-    lgfx::gpio_hi(CS_TOUCH_PIN);
-    lgfx::spi::endTransaction(SPI2_HOST);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {
+        lgfx::spi::beginTransaction(SPI2_HOST, SPI_BUS_TOUCH_FREQUENCY, 0);
+        lgfx::gpio_lo(CS_TOUCH_PIN);
+        lgfx::spi::writeBytes(SPI2_HOST, &ctrl, 1);   // PD1=0, PD0=0 → IRQ enabled
+        lgfx::gpio_hi(CS_TOUCH_PIN);
+        lgfx::spi::endTransaction(SPI2_HOST);
+        xSemaphoreGive(this->_display_mutex);
+    }
     Logger.Info(F("...   Touch Interrupt on XPT2046 activated"));
     Logger.Info(F("...   ST7796S + XPT2046 Initialization complete."));
     Logger.Info(F("...   Done."));
@@ -141,12 +152,16 @@ void Display::begin() {
  */
 void Display::draw_canvas()
 {
-    this->setTextColor(TFT_WHITE);
-    this->setTextSize(1);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {
+        this->setTextColor(TFT_WHITE);
+        this->setTextSize(1);
 
-    this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
-    this->setCursor(370, 5);
-    this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
+        this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
+        this->setCursor(370, 5);
+        this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
+        xSemaphoreGive(this->_display_mutex);
+    }    
 }
 
 /**
@@ -178,7 +193,11 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
     {
         if(touch_areas[i].gpio == gpio)
         {
-            tab.pushSprite(touch_areas[i].tab_x1, touch_areas[i].tab_y1, 0x0000);                                       // push sprite 
+            if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            {            
+                tab.pushSprite(touch_areas[i].tab_x1, touch_areas[i].tab_y1, 0x0000);                                       // push sprite 
+                xSemaphoreGive(this->_display_mutex);
+            }
         }
     }                           
 }
@@ -202,11 +221,15 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
     {
         if(touch_areas[i].gpio == gpio)
         {
-            if(touch_areas[i].icon != NULL)
+            if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {  
-                button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
-            }
-            button.pushSprite(touch_areas[i].icon_x1, touch_areas[i].icon_y1, 0x0000);                                          // push sprite 
+                if(touch_areas[i].icon != NULL)
+                {  
+                    button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
+                }
+                button.pushSprite(touch_areas[i].icon_x1, touch_areas[i].icon_y1, 0x0000);                                          // push sprite
+                xSemaphoreGive(this->_display_mutex);
+            } 
         }
     }                           
 }
@@ -220,7 +243,11 @@ void Display::ems_overlay(bool active)
 {
     if(active)
     {
-        this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
+        if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        {         
+            this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
+            xSemaphoreGive(this->_display_mutex);
+        } 
     }
     else
     {
@@ -260,9 +287,6 @@ void Display::touch_runner(void* args)
     bool shouldProcess = true;
     auto& inputs = Inputs::get_inputs();
     Display *_this = reinterpret_cast<Display *>(args);
-    LGFX_Sprite active(_this);
-    active.setColorDepth(16);                                               // setup for RGB565    
-    active.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);         // create sprite
     Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {
@@ -270,6 +294,7 @@ void Display::touch_runner(void* args)
         {
             // Wait for the notification to come from the event handler
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            if (_this->_paused) continue;
             if (_this->getTouch(&x, &y)) 
             {
                 for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
@@ -312,15 +337,50 @@ void Display::touch_runner(void* args)
     if(_this->_touchRunner != NULL) { vTaskDelete(_this->_touchRunner); _this->_touchRunner = NULL; }
 }
 
+/**
+ * @brief Task function runnign the homing animation
+ * @param args - pointer to task arguments
+ */
+void Display::homeing_animation_runner(void* args)
+{
+    Display *_this = reinterpret_cast<Display *>(args);
+    int i=0;
+    Logger.Info(F("... Homing animation started."));
+    for(;;)
+    {
+        for(uint8_t frame = 0; frame < 20; frame++)
+        {
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            { 
+                _this->draw_homing_frame(frame);
+                xSemaphoreGive(_this->_display_mutex);
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
+            if(_this->_paused || *(_this->_homing_animation_break)) break;
+        }
+        if(_this->_paused || *(_this->_homing_animation_break)) break;
+        i++;
+        if(i>5)break;
+    }
 
-// ---------------------------------------------------------------------
-// HOMING ANIMATION
-// Work area:
-// x = 80
-// y = 60
-// w = 270
-// h = 160
-// ---------------------------------------------------------------------
+    Logger.Info(F("... Homing animation complete."));
+    _this->_homing_animation = NULL;
+    vTaskDelete(NULL);
+}
+
+
+/**
+ * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
+ * of the terminate reference goes true
+ * 
+ * @param terminate - reference to a variable for flow control. Going true will terminate the animation. 
+ */
+void Display::start_homing_animation(bool& terminate)
+{
+    if(this->_homing_animation != NULL) return;           // animation taskis already running.
+    this->_homing_animation_break = &terminate;
+    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 0);
+}
 
 
 void Display::draw_homing_frame(uint8_t frame)

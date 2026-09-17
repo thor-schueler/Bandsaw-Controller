@@ -6,22 +6,22 @@
 uint8_t __instances = 0;
 
 std::array<input_entry_t, 16> __inputs = {{
-    { nullptr, nullptr, EXT_GPIO_ENGAGE_PIN, "Engage Feed" },
-    { nullptr, nullptr, EXT_GPIO_START_PIN, "Toggle Blade" },
-    { nullptr, nullptr, EXT_GPIO_LIGHT_COLD, "Active Cold Light" },
-    { nullptr, nullptr, EXT_GPIO_LIGHT_WARM, "Activate Warm Light" },
-    { nullptr, nullptr, EXT_GPIO_AIR_ON, "Air Blast Always On" },
-    { nullptr, nullptr, EXT_GPIO_AIR_AUTO, "Air Blast Auto" },
-    { nullptr, nullptr, EXT_GPIO_LUBE_ON, "Coolant Always On" },
-    { nullptr, nullptr, EXT_GPIO_LUBE_AUTO, "Coolant Auto" },
-    { nullptr, nullptr, EXT_GPIO_HOME_PIN, "Homing" },
-    { nullptr, nullptr, 9, "" },
-    { nullptr, nullptr, 10, "" },
-    { nullptr, nullptr, 11, "" },
-    { nullptr, nullptr, 12, "" },
-    { nullptr, nullptr, 13, "" },
-    { nullptr, nullptr, 14, "" },
-    { nullptr, nullptr, EXT_GPIO_EMS, "Emergency Shutdown" }
+    { nullptr, nullptr, EXT_GPIO_ENGAGE_PIN, "Engage Feed", true },
+    { nullptr, nullptr, EXT_GPIO_START_PIN, "Toggle Blade", true },
+    { nullptr, nullptr, EXT_GPIO_LIGHT_COLD, "Active Cold Light", true },
+    { nullptr, nullptr, EXT_GPIO_LIGHT_WARM, "Activate Warm Light", true },
+    { nullptr, nullptr, EXT_GPIO_AIR_ON, "Air Blast Always On", true },
+    { nullptr, nullptr, EXT_GPIO_AIR_AUTO, "Air Blast Auto", true  },
+    { nullptr, nullptr, EXT_GPIO_LUBE_ON, "Coolant Always On", true  },
+    { nullptr, nullptr, EXT_GPIO_LUBE_AUTO, "Coolant Auto", true  },
+    { nullptr, nullptr, EXT_GPIO_HOME_PIN, "Homing", true  },
+    { nullptr, nullptr, 9, "", true },
+    { nullptr, nullptr, 10, "", true },
+    { nullptr, nullptr, 11, "", true },
+    { nullptr, nullptr, 12, "", true },
+    { nullptr, nullptr, 13, "", true },
+    { nullptr, nullptr, 14, "", true },
+    { nullptr, nullptr, EXT_GPIO_EMS, "Emergency Shutdown", false}
 }};
 
 /**
@@ -98,6 +98,20 @@ void Inputs::start_monitoring()
 }
 
 /**
+ * @brief Pauses Monitoring for all commands that are allowed to pause
+ * 
+ */
+void Inputs::pause_monitoring() { this->_pause = true; }
+
+/**
+ * @brief Resumes Monitoring for commands that are paused
+ * 
+ */    
+void Inputs::resume_monitoring() { this->_pause = false; }
+
+
+
+/**
  * @brief Get the inputs object
  * 
  * @return reference to a std::array of input_entry_t types.  
@@ -113,8 +127,9 @@ std::array<input_entry_t, 16>& Inputs::get_inputs()
  * @param gpio  - the gpio that will invoke the command 
  * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
  * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+ * @param allow_pause - the command monitoring can be paused for this command
  */
-void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit)
+void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause)
 {
     if(gpio < 0 || gpio > 15)
     {   
@@ -124,6 +139,7 @@ void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, con
     __inputs[gpio].entry = entry;
     __inputs[gpio].exit = exit;
     __inputs[gpio].ext_gpio = gpio;
+    __inputs[gpio].can_be_paused = allow_pause;
 }
 
 /**
@@ -133,8 +149,9 @@ void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, con
  * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
  * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
  * @param cmd   - the title of the command. 
+ * @param allow_pause - the command monitoring can be paused for this command
  */
-void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd)
+void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause)
 {
     if(gpio < 0 || gpio > 15)
     {   
@@ -145,6 +162,7 @@ void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, con
     __inputs[gpio].exit = exit;
     __inputs[gpio].command = cmd;
     __inputs[gpio].ext_gpio = gpio;
+    __inputs[gpio].can_be_paused = allow_pause;
 }
 
 
@@ -193,6 +211,7 @@ void Inputs::extended_GPIO_watcher(void* args)
             for (int i = 15; i >= 0; --i)
             { 
                 s += (button_state & (1u << i)) ? '1' : '0';
+                if (__inputs[i].can_be_paused && _this->_pause) continue;
                 if (turned_on & (1u << i) && __inputs[i].entry != nullptr) __inputs[i].entry(__inputs[i].ext_gpio, __inputs[i].command.c_str());
                 if (turned_off & (1u << i) && __inputs[i].exit != nullptr) __inputs[i].exit(__inputs[i].ext_gpio, __inputs[i].command.c_str());
             }
@@ -203,9 +222,6 @@ void Inputs::extended_GPIO_watcher(void* args)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 }
-
-
-
 
 /**
  * @brief Task function managing wheel movements. This task runs an endless blocking loop,

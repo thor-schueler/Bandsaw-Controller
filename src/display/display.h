@@ -157,15 +157,44 @@ public:
      */
     void ems_overlay(bool active);
 
-    void draw_homing_frame(uint8_t frame);
+    /**
+     * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
+     * of the terminate reference goes true
+     * 
+     * @param terminate - reference to a variable for flow control. Going true will terminate the animation. 
+     */
+    void start_homing_animation(bool& terminate);
+
+    /**
+     * @brief Pauses task processing. This will result in touch no longer being processed and 
+     * running animations being stopped. New animations will not start. 
+     * 
+     */
+    inline void pause_tasks() { this->_paused = true; }; 
+
+    /**
+     * @brief Resume task processing. This will result in touch being processed again and 
+     * animations can now start. 
+     * 
+     */
+    inline void resume_tasks() { this->_paused = false; }; 
+
 
   protected:
+
+    void draw_homing_frame(uint8_t frame);
 
     /**
      * @brief Task function managing the display
      * @param args - pointer to task arguments
      */
     static void touch_runner(void* args);
+
+    /**
+     * @brief Task function runnign the homing animation
+     * @param args - pointer to task arguments
+     */
+    static void homeing_animation_runner(void* args);
 
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
@@ -186,8 +215,11 @@ public:
 
 
 
-
-    TaskHandle_t _touchRunner;
+    bool _paused = false;
+    bool*  _homing_animation_break = nullptr;
+    TaskHandle_t _touchRunner = NULL;
+    TaskHandle_t _homing_animation = NULL;
+    SemaphoreHandle_t _display_mutex;
 };
 
 

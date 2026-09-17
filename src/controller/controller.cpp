@@ -45,16 +45,16 @@ void Controller::begin()
     this->_display->begin();
     this->_motion->begin();
 
-    this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::home, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_LIGHT_COLD, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_LIGHT_WARM, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_AIR_ON, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_AIR_AUTO, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2));
-    this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2));
+    this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::home, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_LIGHT_COLD, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_LIGHT_WARM, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_AIR_ON, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_AIR_AUTO, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
     this->_inputs->begin();
 
     if(this->_inputs->digitalReadEx(EXT_GPIO_EMS)) this->_display->draw_canvas(); 
@@ -233,6 +233,8 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
 
     if(s == EMS_STATE::SHUTDOWN)
     {
+        this->_inputs->pause_monitoring();
+        this->_display->pause_tasks();
         this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF); 
         this->_display->set_button_tab(EXT_GPIO_HOME_PIN, TOUCH_TAB_STATE::OFF); 
         this->_display->set_button_tab(EXT_GPIO_ENGAGE_PIN, TOUCH_TAB_STATE::OFF); 
@@ -247,22 +249,23 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
         this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
         this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
         this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+        this->_display->resume_tasks();
+        this->_inputs->resume_monitoring();
     }
 }
 
 
 void Controller::home(uint8_t gpio, const char* command)
 {
+    static bool term = false;
+
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
 
     this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
     this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-    for(uint8_t frame = 0; frame < 20; frame++)
-    {
-        this->_display->draw_homing_frame(frame);
-        vTaskDelay(pdMS_TO_TICKS(75));
-    }
+
+    this->_display->start_homing_animation(term);    
 }    
 
 
