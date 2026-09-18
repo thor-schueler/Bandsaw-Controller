@@ -79,7 +79,6 @@ class Inputs {
      */
     static std::array<input_entry_t, 16>& get_inputs();
 
-
     /**
      * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
      * 
@@ -103,6 +102,7 @@ class Inputs {
      * 
      */    
     void resume_monitoring();
+
 
 
     /**

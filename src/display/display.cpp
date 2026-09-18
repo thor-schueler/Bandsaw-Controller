@@ -11,16 +11,16 @@
 
 
 touch_area_t touch_areas[] = {
-  { 13, 55, 63, 86, 64, 55, 73, 86, start_icon, EXT_GPIO_START_PIN, true },
-  { 13, 89, 63, 120, 64, 89, 73, 120, engage_icon, EXT_GPIO_ENGAGE_PIN, true },
-  { 13, 123, 63, 154, 64, 123, 73, 154, home_icon, EXT_GPIO_HOME_PIN, true },
-  { 13, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_ON, false},
-  { 13, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_AUTO, false},
-  { 13, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_ON, false},
-  { 13, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_AUTO, false},
-  { 13, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_COLD, false},      
-  { 13, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_WARM, false},
-  { 13, 259, 63, 290, 64, 259, 73, 290, settings_icon, 64, true },
+  { 0, 55, 63, 86, 64, 55, 73, 86, start_icon, EXT_GPIO_START_PIN, true },
+  { 0, 89, 63, 120, 64, 89, 73, 120, engage_icon, EXT_GPIO_ENGAGE_PIN, true },
+  { 0, 123, 63, 154, 64, 123, 73, 154, home_icon, EXT_GPIO_HOME_PIN, true },
+  { 0, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_ON, false},
+  { 0, 157, 63, 188, 64, 157, 73, 188, lube_icon, EXT_GPIO_LUBE_AUTO, false},
+  { 0, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_ON, false},
+  { 0, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_AUTO, false},
+  { 0, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_COLD, false},      
+  { 0, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_WARM, false},
+  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 64, true },
   { 359, 143, 413, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
   { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
 };
@@ -202,6 +202,16 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
     }                           
 }
 
+
+/**
+ * @brief Set the icon and background for a button
+ * 
+ * @param gpio - the gpio number associated with the button
+ * @param on - the desired state of the tab (on, off or pending)
+ * 
+ * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
+ * only and not associated with a physical pin.
+ */
 void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite button(this);
@@ -225,7 +235,7 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
             {  
                 if(touch_areas[i].icon != NULL)
                 {  
-                    button.pushImage(0, 0, ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
+                    button.pushImage(13, 0, ACTIVE_BUTTON_WIDTH-13, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
                 }
                 button.pushSprite(touch_areas[i].icon_x1, touch_areas[i].icon_y1, 0x0000);                                          // push sprite
                 xSemaphoreGive(this->_display_mutex);
@@ -252,6 +262,65 @@ void Display::ems_overlay(bool active)
     else
     {
         this->draw_canvas();
+    }
+}
+
+/**
+ * @brief Write the speeds and feeds overlay into the display
+ * 
+ * @param active - true to activate the EMS overlay, false to deactivate it. 
+ */
+void Display::feeds_and_speeds_overlay(bool active)
+{
+    LGFX_Sprite overlay(this);
+    overlay.setColorDepth(16);
+    overlay.createSprite(127, 143);
+    overlay.fillSprite(TFT_BLACK);
+    if(active) overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
+    else
+    {
+        overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds_inactive);
+    }
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    { 
+        overlay.pushSprite(353, 58);
+        xSemaphoreGive(this->_display_mutex);
+    }
+}
+
+/**
+ * @brief manage the action overlay
+ * 
+ * @param active - true to activate the action overlay, false to deactivate it. 
+ * @param image - A pointer to an image for the overlay. Could be an icon or a font bitmap
+ * @param image_size - The number of elements in the image.
+ * @param title - Title string to use
+ */
+void Display::actions_overlay(bool active, const uint16_t* image, size_t image_size, String title)
+{
+    LGFX_Sprite overlay(this);
+    overlay.setColorDepth(16);
+    overlay.createSprite(127, 70);
+    overlay.fillSprite(TFT_BLACK);
+    if(active) 
+    {
+        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)action);
+        if(image != nullptr) overlay.pushImage(0, 0, image_size/70, 70, (lgfx::rgb565_t*)image, TFT_BLACK);
+        if(!title.isEmpty()) 
+        {
+            overlay.setTextColor(TFT_WHITE);
+            overlay.setFont(&fonts::FreeSans9pt7b);
+            overlay.drawCenterString(title, 60, 26);
+        } 
+    }
+    else
+    {
+        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)action_inactive);
+    }
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    { 
+        overlay.pushSprite(353, 201);
+        xSemaphoreGive(this->_display_mutex);
     }
 }
 
@@ -346,6 +415,8 @@ void Display::homeing_animation_runner(void* args)
     Display *_this = reinterpret_cast<Display *>(args);
     int i=0;
     Logger.Info(F("... Homing animation started."));
+    _this->feeds_and_speeds_overlay(true);
+    _this->actions_overlay(true, homing, homing_size, "");
     for(;;)
     {
         for(uint8_t frame = 0; frame < 60; frame++)
@@ -362,13 +433,42 @@ void Display::homeing_animation_runner(void* args)
         i++;
         if(i>5)break;
     }
+    _this->draw_homing_frame(255);
+    _this->feeds_and_speeds_overlay(false);
+    _this->actions_overlay(false, nullptr, 0, "");
 
     Logger.Info(F("... Homing animation complete."));
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Set the workarea title 
+ * 
+ * @param title_image - A pointer to an image for the title. Could be an icon or a font bitmap
+ * @param title_image_size - The number of elements in the image.
+ * @param title - Title string to use
+ * @remark The title (if present) is written after the image (if present)
+ */
+void Display::set_workarea_title(const uint16_t* title_image, size_t title_image_size, String title)
+{
+    LGFX_Sprite title_sprite(this);
+    title_sprite.setColorDepth(16);
+    title_sprite.createSprite(260, 20);
+    title_sprite.fillSprite(TFT_BLACK);
 
+    if(title_image != nullptr) title_sprite.pushImage(0, 0, title_image_size/20, 20, (lgfx::rgb565_t*)title_image);
+    if(!title.isEmpty())
+    {
+        title_sprite.setTextColor(LCARS_CYAN, TFT_BLACK);
+        title_sprite.setFont(&fonts::Font2);
+        title_sprite.drawString(title.c_str(), 0, 0);
+    }
+    title_sprite.pushSprite(87, 59);
+}
+
+
+#pragma region Homing animation methods
 /**
  * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
  * of the terminate reference goes true
@@ -382,8 +482,6 @@ void Display::start_homing_animation(bool& terminate)
     xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 0);
 }
 
-
-#pragma region Homing animation methods
 /**
  * @brief Draws a frame for the homing animation displayed during the homing cycle
  * 
@@ -391,22 +489,23 @@ void Display::start_homing_animation(bool& terminate)
  */
 void Display::draw_homing_frame(uint8_t frame)
 {
-    frame %= 60;
-
     if(this->_homingSprite == nullptr)
     {
         this->_homingSprite = new LGFX_Sprite(this);
         this->_homingSprite->createSprite(HOMING_W, HOMING_H);
         this->_homingSprite->setColorDepth(16);
     }
-    this->_homingSprite->fillSprite(LCARS_GRAY);
+    this->_homingSprite->fillSprite(frame == 255 ? TFT_BLACK : LCARS_GRAY);
 
-    draw_homing_background();
-    draw_homing_scanner(frame);
-    draw_homing_carriage(frame);
-    draw_homing_reticle(frame);
-    draw_homing_status(frame);
-
+    if(frame < 255)
+    {
+        frame %= 60;
+        draw_homing_background();
+        draw_homing_scanner(frame);
+        draw_homing_carriage(frame);
+        draw_homing_reticle(frame);
+        draw_homing_status(frame);
+    }
     this->_homingSprite->pushSprite(88, 95);
 }
 
@@ -550,7 +649,7 @@ void Display::draw_homing_status(uint8_t frame)
     if(frame < 20 || (frame > 30 && frame < 40) || (frame > 50 && frame < 60))
     {
         _homingSprite->setTextColor(LCARS_CYAN, LCARS_GRAY);
-        _homingSprite->drawString("SEEKING HOME", 5, 135);
+        _homingSprite->drawString("SEEKING HOME", 10, 155);
     }
 }
 #pragma endregion

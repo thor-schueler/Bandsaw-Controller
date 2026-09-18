@@ -29,7 +29,7 @@
 #define TOUCH_CALIBRATION_Y_MIN 3900
 #define TOUCH_CALIBRATION_Y_MAX 250
 
-#define ACTIVE_BUTTON_WIDTH 51
+#define ACTIVE_BUTTON_WIDTH 64
 #define ACTIVE_BUTTON_HEIGHT 32
 #define TAB_WIDTH 10
 #define TAB_HEIGHT 32
@@ -47,6 +47,14 @@ extern const uint16_t air_icon[] PROGMEM;
 extern const uint16_t lube_icon[] PROGMEM;
 extern const uint16_t light_icon[] PROGMEM;
 extern const uint16_t settings_icon[] PROGMEM;
+extern const uint16_t speeds_and_feeds[] PROGMEM;
+extern const uint16_t speeds_and_feeds_inactive[] PROGMEM;
+extern const uint16_t action[] PROGMEM;
+extern const uint16_t action_inactive[] PROGMEM;
+extern const uint16_t homing[] PROGMEM;
+extern const uint16_t homing_title[] PROGMEM;
+extern const size_t homing_title_size;
+extern const size_t homing_size;
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -145,11 +153,38 @@ public:
     void set_button_tab(uint8_t gpio, touch_tab_state_t state);
 
     /**
+     * @brief Set the workarea title 
+     * 
+     * @param title_image - A pointer to an image for the title. Could be an icon or a font bitmap
+     * @param title_image_size - The number of elements in the image.
+     * @param title - Title string to use
+     * @remark The title (if present) is written after the image (if present)
+     */
+    void set_workarea_title(const uint16_t* title_image, size_t title_image_size, String title);
+
+    /**
      * @brief Manages the EMS overlay.
      * 
      * @param active - true to activate the EMS overlay, false to deactivate it. 
      */
     void ems_overlay(bool active);
+
+    /**
+     * @brief Write the speeds and feeds overlay into the display
+     * 
+     * @param active - true to activate the overlay, false to deactivate it. 
+     */
+    void feeds_and_speeds_overlay(bool active);    
+
+    /**
+     * @brief manage the action overlay
+     * 
+     * @param active - true to activate the action overlay, false to deactivate it. 
+     * @param image - A pointer to an image for the overlay. Could be an icon or a font bitmap
+     * @param image_size - The number of elements in the image.
+     * @param title - Title string to use
+     */
+    void actions_overlay(bool active, const uint16_t* title_image, size_t title_image_size, String title);  
 
     /**
      * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
@@ -172,7 +207,6 @@ public:
      * 
      */
     inline void resume_tasks() { this->_paused = false; }; 
-
 
   protected:
 

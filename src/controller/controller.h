@@ -90,6 +90,12 @@ class Controller
          */
         void EMS_change(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Initiates the feed carriage homing process
+         * 
+         * @param gpio - GPIO for the home toggle.
+         * @param command - Command name passed in from the input watcher
+         */
         void home(uint8_t gpio, const char* command);
 
 

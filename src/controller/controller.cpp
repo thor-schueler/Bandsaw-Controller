@@ -254,17 +254,23 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
     }
 }
 
-
+/**
+ * @brief Initiates the feed carriage homing process
+ * 
+ * @param gpio - GPIO for the home toggle.
+ * @param command - Command name passed in from the input watcher
+ */
 void Controller::home(uint8_t gpio, const char* command)
 {
     static bool term = false;
 
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
-
+        
     this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
     this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
 
+    this->_display->set_workarea_title(homing_title, homing_title_size, "");
     this->_display->start_homing_animation(term);    
 }    
 
