@@ -73,6 +73,7 @@ using ems_state_t = EMS_STATE;
 enum class MOTION_STATE : uint8_t {
     IDLE,
     HOMING,
+    FEEDING,
     RUNNING,
     SHUTDOWN
 };

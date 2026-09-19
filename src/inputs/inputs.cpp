@@ -66,9 +66,7 @@ void Inputs::begin()
     Logger.Info(F("... Begin input controller execution."));
     Logger.Info(F("...   Setup Extended GPIO"));
     for(int i=0; i<16; i++) Inputs::_pcf8575->pinMode(i, INPUT);
-    Inputs:_pcf8575->begin();
-
-
+    Inputs::_pcf8575->begin();
 
     Logger.Info(F("...   Setup GPIO pins"));
     pinMode(WHEEL_A, INPUT);

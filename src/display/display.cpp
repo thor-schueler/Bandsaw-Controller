@@ -279,35 +279,35 @@ void Display::feeds_and_speeds_overlay(bool active, float speed)
     if(active) 
     {
         char buf[16];
-        uint8_t x = 15;
         uint8_t xx = 0;
-        snprintf(buf, sizeof(buf), "%.1f", speed);
+        uint8_t x = FEED_X_OFFSET;
+        snprintf(buf, sizeof(buf), speed < 10 ? "%.2f" : "%.1f", speed);
         overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
         overlay.setTextColor(LCARS_ORANGE, TFT_BLACK);
-        overlay.fillRect(6, 31, 52, 50, TFT_BLACK);
+        overlay.fillRect(6, 31, 104, 50, TFT_BLACK);
 
         for(char* p = buf; *p; ++p)
         {
             lgfx::rgb565_t* img = nullptr;
             switch(*p)
             {
-                case '0': img = (lgfx::rgb565_t*)D0; xx = D0_WIDTH; break;
-                case '1': img = (lgfx::rgb565_t*)D1; xx = D1_WIDTH; break;
-                case '2': img = (lgfx::rgb565_t*)D2; xx = D2_WIDTH; break;
-                case '3': img = (lgfx::rgb565_t*)D3; xx = D3_WIDTH; break;
-                case '4': img = (lgfx::rgb565_t*)D4; xx = D4_WIDTH; break;
-                case '5': img = (lgfx::rgb565_t*)D5; xx = D5_WIDTH; break;
-                case '6': img = (lgfx::rgb565_t*)D6; xx = D6_WIDTH; break;
-                case '7': img = (lgfx::rgb565_t*)D7; xx = D7_WIDTH; break;
-                case '8': img = (lgfx::rgb565_t*)D8; xx = D8_WIDTH; break;
-                case '9': img = (lgfx::rgb565_t*)D9; xx = D9_WIDTH; break;
+                case '0': img = (lgfx::rgb565_t*)D0; xx = D_WIDTH; break;
+                case '1': img = (lgfx::rgb565_t*)D1; xx = D_WIDTH; break;
+                case '2': img = (lgfx::rgb565_t*)D2; xx = D_WIDTH; break;
+                case '3': img = (lgfx::rgb565_t*)D3; xx = D_WIDTH; break;
+                case '4': img = (lgfx::rgb565_t*)D4; xx = D_WIDTH; break;
+                case '5': img = (lgfx::rgb565_t*)D5; xx = D_WIDTH; break;
+                case '6': img = (lgfx::rgb565_t*)D6; xx = D_WIDTH; break;
+                case '7': img = (lgfx::rgb565_t*)D7; xx = D_WIDTH; break;
+                case '8': img = (lgfx::rgb565_t*)D8; xx = D_WIDTH; break;
+                case '9': img = (lgfx::rgb565_t*)D9; xx = D_WIDTH; break;
                 case '.': img = (lgfx::rgb565_t*)DDot; xx = DDOT_WIDTH; break;
             }
             if(img == nullptr) continue;
-            overlay.pushImage(x, 40, xx, D_HEIGHT, img, TFT_BLACK);
-            x += xx;
+            overlay.pushImage(x, FEED_Y_OFFSET, xx, D_HEIGHT, img, TFT_BLACK);
+            x += xx - 2;
         }
-        //overlay.drawString(buf, 15, 40, &fonts::FreeSans18pt7b);
+        overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
     }
     else
     {

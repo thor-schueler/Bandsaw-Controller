@@ -32,9 +32,6 @@
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
 
-#define WHEEL_A 36
-#define WHEEL_B 39
-
 /**
  * @brief defines an input entry, which determines what methods to call when 
  * a GPIO turns on or off. 

@@ -34,7 +34,8 @@
 #define TAB_WIDTH 10
 #define TAB_HEIGHT 32
 
-#define D_HEIGHT 36
+#define D_HEIGHT 32
+#define D_WIDTH 14
 #define D0_WIDTH 18
 #define D1_WIDTH 12
 #define D2_WIDTH 17
@@ -45,7 +46,10 @@
 #define D7_WIDTH 17
 #define D8_WIDTH 18
 #define D9_WIDTH 18
-#define DDOT_WIDTH 8
+#define DDOT_WIDTH 7
+#define DIPM_WIDTH 33
+#define FEED_X_OFFSET 18
+#define FEED_Y_OFFSET 42
 
 extern const uint16_t background[] PROGMEM;
 extern const uint16_t ems[] PROGMEM;
@@ -78,6 +82,7 @@ extern const uint16_t D7[] PROGMEM;
 extern const uint16_t D8[] PROGMEM;
 extern const uint16_t D9[] PROGMEM;
 extern const uint16_t DDot[] PROGMEM;
+extern const uint16_t DIPM[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 

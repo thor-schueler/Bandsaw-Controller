@@ -10,8 +10,8 @@
  */
 Motion::Motion()
 {
-    this->_tmc_serial = new HardwareSerial(2);
-    this->_tmc_driver = new TMC2209Stepper(this->_tmc_serial, R_SENSE, DRIVER_ADDR);
+    //this->_tmc_serial = new HardwareSerial(2);
+    //this->_tmc_driver = new TMC2209Stepper(this->_tmc_serial, R_SENSE, DRIVER_ADDR);
 }
 
 /**
@@ -20,10 +20,31 @@ Motion::Motion()
  */
 Motion::~Motion()
 {
-    delete this->_tmc_driver;
-    this->_tmc_serial->end();
-    delete this->_tmc_serial;
+    //delete this->_tmc_driver;
+    //this->_tmc_serial->end();
+    //delete this->_tmc_serial;
 }
+
+//HardwareSerial dTMCSerial(2);
+//TMC2209Stepper ddriver(&dTMCSerial, R_SENSE, DRIVER_ADDR);
+
+ledc_timer_config_t _timer_config = {
+    .speed_mode      = LEDC_HIGH_SPEED_MODE,
+    .duty_resolution = LEDC_TIMER_12_BIT,
+    .timer_num       = LEDC_TIMER_0,
+    .freq_hz         = BASE_SPEED,
+    .clk_cfg         = LEDC_USE_APB_CLK,
+};
+
+ledc_channel_config_t _channel_config = {
+    .gpio_num   = STEP_PIN,
+    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    .channel    = LEDC_CHANNEL_0,
+    .timer_sel  = LEDC_TIMER_0,
+    .duty       = 512,  // 50% duty cycle on 12-bit resolution
+    .hpoint     = 0
+};
+
 
 /**
  * @brief Initializes key objects and structures and starts the execution
@@ -44,65 +65,101 @@ void Motion::begin()
     digitalWrite(SOLENOID_A_PIN, HIGH);
     digitalWrite(SOLENOID_B_PIN, HIGH);
 
-    // Stepper pins
-    Logger.Info(F("...   Configure stepper pins GPIO."));
-    pinMode(DIR_PIN, OUTPUT);
-    pinMode(EN_PIN, OUTPUT);
-    pinMode(DIAG_PIN, INPUT_PULLUP);
-    digitalWrite(EN_PIN, HIGH);                              // disable stepper initially  
-    attachInterruptArg(DIAG_PIN, stall_isr, this, RISING);  // or FALLING depending on polarity
-
-    // Attach limit switches
+     // Attach limit switches
     Logger.Info(F("...   Configure end stop limit switches."));
     pinMode(LIMIT_1_PIN, INPUT);
     pinMode(LIMIT_2_PIN, INPUT);
     attachInterruptArg(LIMIT_1_PIN, limit_isr, this, CHANGE);  
-    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, CHANGE);  
+    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, CHANGE); 
+
+    // Stepper pins
+    Logger.Info(F("...   Configure stepper pins GPIO."));
+
+
+    pinMode(DIR_PIN, OUTPUT);
+    pinMode(EN_PIN, OUTPUT);
+    //pinMode(DIAG_PIN, INPUT_PULLUP);
+    digitalWrite(EN_PIN, LOW);                              // disable stepper initially  
+    digitalWrite(DIR_PIN, LOW);                             // initialize direction       
+    //attachInterruptArg(DIAG_PIN, stall_isr, this, RISING);  // or FALLING depending on polarity
+
+   return;    
+
+    // PWM configuration
+    Logger.Info(F("...   Configure PWM for stepper."));
+    //ledc_timer_config_t _timer_config = {
+    //    .speed_mode      = LEDC_HIGH_SPEED_MODE,
+    //    .duty_resolution = LEDC_TIMER_12_BIT,
+    //    .timer_num       = LEDC_TIMER_0,
+    //    .freq_hz         = BASE_SPEED,
+    //    .clk_cfg         = LEDC_USE_APB_CLK,
+    //};
+
+    //ledc_channel_config_t _channel_config = {
+    //    .gpio_num   = STEP_PIN,
+    //    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    //    .channel    = LEDC_CHANNEL_0,
+    //    .timer_sel  = LEDC_TIMER_0,
+    //    .duty       = 512,  // 50% duty cycle on 12-bit resolution
+    //    .hpoint     = 0
+    //};
+    this->_frequency = BASE_SPEED;
+    //esp_err_t r = ledc_timer_config(&_timer_config);
+    //if(r != ESP_OK) Logger.Error_f(F("PWM timer configuration failed with 0x%04X"), r);
+    //r = ledc_channel_config(&_channel_config);
+    //if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
-    this->_tmc_serial->begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
+    //this->_tmc_serial->begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
+    //dTMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
+
 
     // tmc driver start
     // Driver init
-    this->_tmc_driver->begin();
-    this->_tmc_driver->toff(4);
-    this->_tmc_driver->blank_time(24);
-    this->_tmc_driver->rms_current(2000);       // Maximum Stepper current
-    this->_tmc_driver->microsteps(4);           // Initial Microstep configuration. 
-    this->_tmc_driver->pwm_autoscale(true);     // Enable StealthChop
+    //this->_tmc_driver = &driver;
+
+    //ddriver.begin();
+    //ddriver.toff(4);
+    //ddriver.blank_time(24);
+    //ddriver.rms_current(2000);       // Maximum Stepper current
+    //ddriver.microsteps(4);           // Initial Microstep configuration. 
+    //ddriver.pwm_autoscale(true);     // Enable StealthChop
 
     //
     // StallGuard configuration
     //
-    this->_tmc_driver->en_spreadCycle(true);    // StallGuard ONLY works in SpreadCycle
-    this->_tmc_driver->pwm_autoscale(false);    // Disable StealthChop
-    this->_tmc_driver->TCOOLTHRS(0xFFFFF);      // Allow SG to operate at all speeds
-    this->_tmc_driver->SGTHRS(50);              // StallGuard threshold (tune this)
-    this->_tmc_driver->irun(31);
-    this->_tmc_driver->ihold(31);
+    //ddriver.en_spreadCycle(true);    // StallGuard ONLY works in SpreadCycle
+    //ddriver.pwm_autoscale(false);    // Disable StealthChop
+    //ddriver.TCOOLTHRS(0xFFFFF);      // Allow SG to operate at all speeds
+    //ddriver.SGTHRS(50);              // StallGuard threshold (tune this)
+    //ddriver.irun(31);
+    //ddriver.ihold(31);
 
-    // PWM configuration
-    Logger.Info(F("...   Configure PWM for stepper."));
-    ledc_timer_config_t t = {
-        .speed_mode      = LEDC_HIGH_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_12_BIT,
-        .timer_num       = LEDC_TIMER_0,
-        .freq_hz         = this->_frequency,
-        .clk_cfg         = LEDC_USE_APB_CLK,
-    };
 
-    ledc_channel_config_t c = {
-        .gpio_num   = STEP_PIN,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
-        .channel    = LEDC_CHANNEL_0,
-        .timer_sel  = LEDC_TIMER_0,
-        .duty       = 512,  // 50% duty cycle on 12-bit resolution
-        .hpoint     = 0
-    };
-    ledc_timer_config(&t);
-    ledc_channel_config(&c);
+    //this->_tmc_driver->begin();
+    //this->_tmc_driver->toff(4);
+    //this->_tmc_driver->blank_time(24);
+    //this->_tmc_driver->rms_current(2000);       // Maximum Stepper current
+    //this->_tmc_driver->microsteps(4);           // Initial Microstep configuration. 
+    //this->_tmc_driver->pwm_autoscale(true);     // Enable StealthChop
 
+    //
+    // StallGuard configuration
+    //
+    //this->_tmc_driver->en_spreadCycle(true);    // StallGuard ONLY works in SpreadCycle
+    //this->_tmc_driver->pwm_autoscale(false);    // Disable StealthChop
+    //this->_tmc_driver->TCOOLTHRS(0xFFFFF);      // Allow SG to operate at all speeds
+    //this->_tmc_driver->SGTHRS(50);              // StallGuard threshold (tune this)
+    //this->_tmc_driver->irun(31);
+    //this->_tmc_driver->ihold(31);
+
+    Logger.Info(F("...   TMC2209 initialized with StallGuard."));
+    //Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
+    //Logger.Info_f(F("...   Driver IHold/IRun: 0x%08X"), this->_tmc_driver->IHOLD_IRUN());
+    //Logger.Info_f(F("...   Driver TPowerDown: 0x%08X"), this->_tmc_driver->TPOWERDOWN());
+    //Logger.Info_f(F("...   Driver Config: 0x%08X"), this->_tmc_driver->GCONF());
+    //Logger.Info_f(F("...   Driver Status: 0x%08X"), this->_tmc_driver->DRV_STATUS());
     Logger.Info(F("...   Done."));
 }
 
@@ -345,6 +402,7 @@ void Motion::homing_runner(void * args)
     _this->_state = MOTION_STATE::HOMING;
     _this->_frequency = HIGH_SPEED;
     ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+    Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
     while(digitalRead(LIMIT_1_PIN) == HIGH)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;

@@ -28,6 +28,8 @@
 #include "src/logging/SerialLogger.h"
 #include "src/controller/controller.h"
 
+#include <TMCStepper.h>
+#include "driver/ledc.h"
 
 //#define TELEMETRY_FREQUENCY_MILLISECS 120000
 //#define AP_ENABLE_PIN 5
@@ -47,6 +49,25 @@ SET_LOOP_TASK_STACK_SIZE(3052);
 #endif
 
 Controller* controller = NULL;
+HardwareSerial TMCSerial(2);
+TMC2209Stepper driver(&TMCSerial, R_SENSE, DRIVER_ADDR);
+
+ledc_timer_config_t t = {
+    .speed_mode      = LEDC_HIGH_SPEED_MODE,
+    .duty_resolution = LEDC_TIMER_12_BIT,
+    .timer_num       = LEDC_TIMER_0,
+    .freq_hz         = BASE_SPEED,
+    .clk_cfg         = LEDC_USE_APB_CLK,
+};
+
+ledc_channel_config_t c = {
+    .gpio_num   = STEP_PIN,
+    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    .channel    = LEDC_CHANNEL_0,
+    .timer_sel  = LEDC_TIMER_0,
+    .duty       = 512,  // 50% duty cycle on 12-bit resolution
+    .hpoint     = 0
+};
 
 /**
  * @brief Performs system setup activities, including connecting to WIFI, setting time, obtaining the IoTHub info 
@@ -84,9 +105,41 @@ void setup()
   Logger.Info(F("... Startup"));
   //config.Print();
   
+  TMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
+  //pinMode(DIR_PIN, OUTPUT);
+  //pinMode(EN_PIN, OUTPUT);
+  //digitalWrite(EN_PIN, LOW);
+  //digitalWrite(DIR_PIN, LOW);  
+
   controller = new Controller();
   controller->begin();
-  
+
+  ledc_timer_config(&t);
+  ledc_channel_config(&c);
+
+  driver.begin();
+  driver.toff(4);
+  driver.blank_time(24);
+  driver.rms_current(2000);
+  driver.microsteps(4);
+  driver.pwm_autoscale(true);   // StealthChop
+
+  // -----------------------------
+  // StallGuard configuration
+  // -----------------------------
+  driver.en_spreadCycle(true);  // StallGuard ONLY works in SpreadCycle
+  driver.pwm_autoscale(false);  // Disable StealthChop
+  driver.TCOOLTHRS(0xFFFFF);    // Allow SG to operate at all speeds
+  driver.SGTHRS(50);            // StallGuard threshold (tune this)
+  driver.irun(31);
+  driver.ihold(31);
+  Serial.println(driver.IHOLD_IRUN(), HEX);
+  Serial.println(driver.TPOWERDOWN(), HEX);
+  Serial.println(driver.GCONF(), HEX);
+  Serial.println(driver.DRV_STATUS(), HEX);
+
+
+
   Logger.Info(F("... Init done"));
   Logger.Info_f(F("Free heap: %d"), ESP.getFreeHeap()); 
   Logger.Info_f(F("Free PSRAM: %d"), ESP.getFreePsram());

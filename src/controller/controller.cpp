@@ -43,7 +43,6 @@ void Controller::begin()
     digitalWrite(LIGHT_STRIP_PIN, LOW);
 
     this->_display->begin();
-    this->_motion->begin();
 
     this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::switch_on, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
@@ -56,6 +55,7 @@ void Controller::begin()
     this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
     this->_inputs->begin();
+    this->_motion->begin();
 
     if(this->_inputs->digitalReadEx(EXT_GPIO_EMS)) this->_display->draw_canvas(); 
                 // only build canvas if EMS is not active
@@ -76,12 +76,17 @@ void Controller::begin()
  */        
 void Controller::manage_lights(uint8_t gpio, const char* command)
 {
-    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
-            // do nothing when EMS (active low) is active. 
-
     uint8_t is_warm = !this->_inputs->digitalReadEx(EXT_GPIO_LIGHT_WARM);
     uint8_t is_cold = !this->_inputs->digitalReadEx(EXT_GPIO_LIGHT_COLD);
                                                 // inputs are active low!
+    
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS))
+    {
+            // do nothing when EMS (active low) is active. 
+            if(!is_warm && ! is_cold) digitalWrite(LIGHT_STRIP_PIN, LOW);
+            return;
+    } 
+          
     if(!is_warm && ! is_cold)
     {
         digitalWrite(LIGHT_STRIP_PIN, LOW);
