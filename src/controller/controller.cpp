@@ -262,16 +262,23 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
  */
 void Controller::home(uint8_t gpio, const char* command)
 {
-    static bool term = false;
-
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
         
     this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
     this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-
-    this->_display->set_workarea_title(homing_title, homing_title_size, "");
-    this->_display->start_homing_animation(term);    
+    if(this->_motion->get_state() == MOTION_STATE::IDLE)
+    {
+        this->_display->set_workarea_title(homing_title, homing_title_size, "");
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm());
+        this->_display->start_homing_animation();
+        this->_motion->home([this](){ _display->homing_complete();}); 
+    }
+    else if (this->_motion->get_state() == MOTION_STATE::HOMING)
+    {
+        this->_display->set_workarea_title(nullptr, 0, "");
+        this->_motion->home(nullptr);
+    }
 }    
 
 

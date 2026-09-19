@@ -202,7 +202,6 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
     }                           
 }
 
-
 /**
  * @brief Set the icon and background for a button
  * 
@@ -268,15 +267,48 @@ void Display::ems_overlay(bool active)
 /**
  * @brief Write the speeds and feeds overlay into the display
  * 
- * @param active - true to activate the EMS overlay, false to deactivate it. 
+ * @param active - true to activate the EMS overlay, false to deactivate it.
+ * @param speed - the speed (expected in IPM) 
  */
-void Display::feeds_and_speeds_overlay(bool active)
+void Display::feeds_and_speeds_overlay(bool active, float speed)
 {
     LGFX_Sprite overlay(this);
     overlay.setColorDepth(16);
     overlay.createSprite(127, 143);
     overlay.fillSprite(TFT_BLACK);
-    if(active) overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
+    if(active) 
+    {
+        char buf[16];
+        uint8_t x = 15;
+        uint8_t xx = 0;
+        snprintf(buf, sizeof(buf), "%.1f", speed);
+        overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
+        overlay.setTextColor(LCARS_ORANGE, TFT_BLACK);
+        overlay.fillRect(6, 31, 52, 50, TFT_BLACK);
+
+        for(char* p = buf; *p; ++p)
+        {
+            lgfx::rgb565_t* img = nullptr;
+            switch(*p)
+            {
+                case '0': img = (lgfx::rgb565_t*)D0; xx = D0_WIDTH; break;
+                case '1': img = (lgfx::rgb565_t*)D1; xx = D1_WIDTH; break;
+                case '2': img = (lgfx::rgb565_t*)D2; xx = D2_WIDTH; break;
+                case '3': img = (lgfx::rgb565_t*)D3; xx = D3_WIDTH; break;
+                case '4': img = (lgfx::rgb565_t*)D4; xx = D4_WIDTH; break;
+                case '5': img = (lgfx::rgb565_t*)D5; xx = D5_WIDTH; break;
+                case '6': img = (lgfx::rgb565_t*)D6; xx = D6_WIDTH; break;
+                case '7': img = (lgfx::rgb565_t*)D7; xx = D7_WIDTH; break;
+                case '8': img = (lgfx::rgb565_t*)D8; xx = D8_WIDTH; break;
+                case '9': img = (lgfx::rgb565_t*)D9; xx = D9_WIDTH; break;
+                case '.': img = (lgfx::rgb565_t*)DDot; xx = DDOT_WIDTH; break;
+            }
+            if(img == nullptr) continue;
+            overlay.pushImage(x, 40, xx, D_HEIGHT, img, TFT_BLACK);
+            x += xx;
+        }
+        //overlay.drawString(buf, 15, 40, &fonts::FreeSans18pt7b);
+    }
     else
     {
         overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds_inactive);
@@ -413,31 +445,30 @@ void Display::touch_runner(void* args)
 void Display::homeing_animation_runner(void* args)
 {
     Display *_this = reinterpret_cast<Display *>(args);
-    int i=0;
     Logger.Info(F("... Homing animation started."));
-    _this->feeds_and_speeds_overlay(true);
     _this->actions_overlay(true, homing, homing_size, "");
+    _this->_homing_animation_break = false;
     for(;;)
     {
         for(uint8_t frame = 0; frame < 60; frame++)
-        {
-            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
-            { 
-                _this->draw_homing_frame(frame);
-                xSemaphoreGive(_this->_display_mutex);
-            }
+        { 
+            _this->draw_homing_frame(frame);
             vTaskDelay(pdMS_TO_TICKS(50));
-            if(_this->_paused || *(_this->_homing_animation_break)) break;
+            if(_this->_paused || _this->_homing_animation_break) break;
         }
-        if(_this->_paused || *(_this->_homing_animation_break)) break;
-        i++;
-        if(i>5)break;
+        if(_this->_paused || _this->_homing_animation_break) break;
     }
-    _this->draw_homing_frame(255);
-    _this->feeds_and_speeds_overlay(false);
-    _this->actions_overlay(false, nullptr, 0, "");
+    if(!_this->_paused)
+    {
+        _this->draw_homing_frame(255);
+        _this->feeds_and_speeds_overlay(false, 0);
+        _this->actions_overlay(false, nullptr, 0, "");
+        _this->set_workarea_title(nullptr, 0, "");
+        _this->set_button_tab(EXT_GPIO_HOME_PIN, TOUCH_TAB_STATE::OFF);
+    }
 
     Logger.Info(F("... Homing animation complete."));
+    _this->_homing_animation_break = false;
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
 }
@@ -464,7 +495,11 @@ void Display::set_workarea_title(const uint16_t* title_image, size_t title_image
         title_sprite.setFont(&fonts::Font2);
         title_sprite.drawString(title.c_str(), 0, 0);
     }
-    title_sprite.pushSprite(87, 59);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {     
+        title_sprite.pushSprite(87, 59);
+        xSemaphoreGive(this->_display_mutex);
+    }
 }
 
 
@@ -475,11 +510,10 @@ void Display::set_workarea_title(const uint16_t* title_image, size_t title_image
  * 
  * @param terminate - reference to a variable for flow control. Going true will terminate the animation. 
  */
-void Display::start_homing_animation(bool& terminate)
+void Display::start_homing_animation()
 {
     if(this->_homing_animation != NULL) return;           // animation taskis already running.
-    this->_homing_animation_break = &terminate;
-    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 0);
+    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 1);
 }
 
 /**
@@ -506,7 +540,11 @@ void Display::draw_homing_frame(uint8_t frame)
         draw_homing_reticle(frame);
         draw_homing_status(frame);
     }
-    this->_homingSprite->pushSprite(88, 95);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {  
+        this->_homingSprite->pushSprite(88, 95);
+        xSemaphoreGive(this->_display_mutex);
+    }
 }
 
 /**

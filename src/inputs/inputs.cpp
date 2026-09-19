@@ -93,7 +93,7 @@ void Inputs::start_monitoring()
     if(Inputs::_extendedGPIOWatcher == NULL)
     {
         Logger.Info(F("...   Configure Extended GPIO monitoring task"));
-        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 2048, this, 1, &Inputs::_extendedGPIOWatcher, 0);
+        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 4096, this, 1, &Inputs::_extendedGPIOWatcher, 0);
     }
 }
 

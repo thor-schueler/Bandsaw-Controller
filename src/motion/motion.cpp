@@ -88,7 +88,7 @@ void Motion::begin()
         .speed_mode      = LEDC_HIGH_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_12_BIT,
         .timer_num       = LEDC_TIMER_0,
-        .freq_hz         = SPEED,
+        .freq_hz         = this->_frequency,
         .clk_cfg         = LEDC_USE_APB_CLK,
     };
 
@@ -124,10 +124,18 @@ void IRAM_ATTR Motion::stall_isr(void * arg)
  */ 
 void IRAM_ATTR Motion::limit_isr(void * arg) 
 {
-    Motion *_this = reinterpret_cast<Motion *>(arg);
-    _this->_home_limit = digitalRead(LIMIT_1_PIN);
-    _this->_feed_limit = digitalRead(LIMIT_2_PIN);
+    // debounce limit switch for 250ms
+    volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
+    uint32_t currentTime = millis(); 
 
+    if ((currentTime - lastDebounceTime) < 250) return;                         // ignore bounces
+
+    Motion *_this = reinterpret_cast<Motion *>(arg);  
+    _this->_home_limit = digitalRead(LIMIT_1_PIN);                              // active low
+    _this->_feed_limit = digitalRead(LIMIT_2_PIN);                              // active low
+    if(!_this->_home_limit || !_this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
+    if(!_this->_home_limit) digitalWrite(DIR_PIN, HIGH);                        // set allowable direction
+    if(!_this->_feed_limit) digitalWrite(DIR_PIN, LOW);
 }
 
 /**
@@ -292,11 +300,107 @@ ems_state_t Motion::manage_ems_state(uint8_t gpio_state)
         digitalWrite(SOLENOID_B_PIN, HIGH);     // active low
         Logger.Info(F("... Emergency shutdown performed, blade, feed and solenoids have been shutdown."));
         this->_ems_state = EMS_STATE::SHUTDOWN;
+        this->_state = MOTION_STATE::SHUTDOWN;
     }
     else
     {
         this->_ems_state = EMS_STATE::RUNNING;
+        this->_state = MOTION_STATE::IDLE;
         Logger.Info(F("... Emergency shutdown cleared"));
     }
     return this->_ems_state;
+}
+
+/**
+ * @brief Starts the homing sequence
+ * 
+ * @param complete - function to call when the homing is complete.
+ */
+void Motion::home(std::function<void()> complete)
+{
+    if(this->_homing_task != NULL)
+    {
+        _job_should_exit = true;
+    }
+    else
+    {
+        TaskArgs* args = new TaskArgs { this, std::move(complete) };
+        xTaskCreatePinnedToCore(homing_runner, "homingRunner", 2048, args, 1, &_homing_task, 1);
+    }
+}
+
+/**
+ * @brief Task function performing the homing to of the feed carriage
+ * 
+ * @param args - pointer to task arguments 
+ */
+void Motion::homing_runner(void * args)
+{
+    TaskArgs* _args = static_cast<TaskArgs*>(args);
+    Motion* _this = _args->self;
+    int i=0;
+    uint16_t _s = _this->_frequency;
+
+    Logger.Info(F("... Starting homing task"));
+    _this->_state = MOTION_STATE::HOMING;
+    _this->_frequency = HIGH_SPEED;
+    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+    while(digitalRead(LIMIT_1_PIN) == HIGH)
+    {
+        if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
+        if(_this->_job_should_exit) break;
+
+        digitalWrite(DIR_PIN, LOW);         // set direction towards home
+        digitalWrite(EN_PIN, LOW);          // enable stepper
+        vTaskDelay(100);                    // delay 100ms. There is no risk here as the interrupt handler will
+                                            // disable the stepper as soon as the home limit has been hit. 
+        i++;
+        if(i > 100) break;
+    } 
+
+    digitalWrite(EN_PIN, HIGH);             // disable the stepper in case we terminated due to EMS or user termination.
+    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s); 
+    _this->_frequency = _s;
+    _args->callback();
+    if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
+    {
+        Logger.Info(F("...   Homing task terminated due to EMS shutdown.")); 
+        _this->_state = MOTION_STATE::SHUTDOWN;
+    }
+    else if(_this->_job_should_exit)
+    {
+        Logger.Info(F("...   Homing task terminated due to user request.")); 
+        _this->_job_should_exit = false;
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    else
+    {    
+        if(i == 0) Logger.Info(F("...   Carriage already home."));
+        if(i > 0) Logger.Info(F("...   Homing successful, carriage home."));
+        Logger.Info(F("...   Homing task complete."));
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    _this->_homing_task = NULL;
+    delete _args;
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Gets the current feed rate.
+ *
+ *      Assumptions:
+ *          - 200 step/rev motor
+ *          - 4 microsteps/full step
+ *          - 20T : 80T pulley ratio (4:1 reduction)
+ *          - TR8x4 leadscrew (4 mm lead)
+ *
+ * @return Feed rate in inches per minute.
+ */
+float Motion::feed_rate_ipm()
+{
+    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * MICROSTEPS;
+    const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
+    const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
+    const float mm_per_min = this->_frequency * mm_per_microstep * 60.0f;
+    return mm_per_min / MM_PER_INCH;  
 }

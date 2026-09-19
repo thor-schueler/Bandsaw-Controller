@@ -103,8 +103,6 @@ class Inputs {
      */    
     void resume_monitoring();
 
-
-
     /**
      * @brief Registers a command for a specific GPIO
      * 

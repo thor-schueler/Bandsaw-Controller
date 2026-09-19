@@ -33,6 +33,20 @@
 #define ACTIVE_BUTTON_HEIGHT 32
 #define TAB_WIDTH 10
 #define TAB_HEIGHT 32
+
+#define D_HEIGHT 36
+#define D0_WIDTH 18
+#define D1_WIDTH 12
+#define D2_WIDTH 17
+#define D3_WIDTH 18
+#define D4_WIDTH 20
+#define D5_WIDTH 18
+#define D6_WIDTH 18
+#define D7_WIDTH 17
+#define D8_WIDTH 18
+#define D9_WIDTH 18
+#define DDOT_WIDTH 8
+
 extern const uint16_t background[] PROGMEM;
 extern const uint16_t ems[] PROGMEM;
 extern const uint16_t active_button[] PROGMEM;
@@ -53,6 +67,17 @@ extern const uint16_t action[] PROGMEM;
 extern const uint16_t action_inactive[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
+extern const uint16_t D0[] PROGMEM;
+extern const uint16_t D1[] PROGMEM;
+extern const uint16_t D2[] PROGMEM;
+extern const uint16_t D3[] PROGMEM;
+extern const uint16_t D4[] PROGMEM;
+extern const uint16_t D5[] PROGMEM;
+extern const uint16_t D6[] PROGMEM;
+extern const uint16_t D7[] PROGMEM;
+extern const uint16_t D8[] PROGMEM;
+extern const uint16_t D9[] PROGMEM;
+extern const uint16_t DDot[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 
@@ -173,8 +198,9 @@ public:
      * @brief Write the speeds and feeds overlay into the display
      * 
      * @param active - true to activate the overlay, false to deactivate it. 
+     * @param speed - the speed (expected in IPM)
      */
-    void feeds_and_speeds_overlay(bool active);    
+    void feeds_and_speeds_overlay(bool active, float speed);    
 
     /**
      * @brief manage the action overlay
@@ -187,12 +213,11 @@ public:
     void actions_overlay(bool active, const uint16_t* title_image, size_t title_image_size, String title);  
 
     /**
-     * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
-     * of the terminate reference goes true
+     * @brief Starts the homing animation. Once started, the animation will run until terminated by calling 
+     * Display::homing_complete()
      * 
-     * @param terminate - reference to a variable for flow control. Going true will terminate the animation. 
      */
-    void start_homing_animation(bool& terminate);
+    void start_homing_animation();
 
     /**
      * @brief Pauses task processing. This will result in touch no longer being processed and 
@@ -207,6 +232,13 @@ public:
      * 
      */
     inline void resume_tasks() { this->_paused = false; }; 
+
+
+    /**
+     * @brief should be called when the homing is complete to terminate the homing animation.
+     * 
+     */
+    void homing_complete() { if(this->_homing_animation != NULL) this->_homing_animation_break = true; };
 
   protected:
 
@@ -288,10 +320,10 @@ public:
 
     LGFX_Sprite* _homingSprite = nullptr;
     bool _paused = false;
-    bool*  _homing_animation_break = nullptr;
+    bool _homing_animation_break = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
-    SemaphoreHandle_t _display_mutex;
+    volatile SemaphoreHandle_t _display_mutex;
 };
 
 
