@@ -412,3 +412,20 @@ float Motion::feed_rate_ipm()
     const float mm_per_min = this->_frequency * mm_per_microstep * 60.0f;
     return mm_per_min / MM_PER_INCH;  
 }
+
+/**
+ * @brief Processes wheel movement events and takes the appropriate actions depending on hte motion state.
+ * @param direction - the direction of the wheel movement.
+ * @param steps - the number of steps moved.
+ */
+void Motion::process_wheel_movement(int direction, int steps) 
+{ 
+    Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
+    if(this->_state == MOTION_STATE::SHUTDOWN) return;
+    if(this->_state == MOTION_STATE::HOMING)
+    {
+        // when homing, the wheel will increase and decrease the homing speed....
+        this->_frequency += direction * FREQUENCY_INCREMENT;
+        ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_frequency); 
+    }
+}

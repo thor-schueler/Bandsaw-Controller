@@ -61,6 +61,7 @@ void Controller::begin()
     if(this->_inputs->digitalReadEx(EXT_GPIO_EMS)) this->_display->draw_canvas(); 
                 // only build canvas if EMS is not active
 
+    this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
     this->_inputs->start_monitoring();
     Logger.Info(F("... Done."));
 }

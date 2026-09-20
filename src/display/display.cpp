@@ -25,7 +25,6 @@ touch_area_t touch_areas[] = {
   { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
 };
 
-
 /**
  * @brief Construct a new Display object
  * 
@@ -268,9 +267,74 @@ void Display::ems_overlay(bool active)
  * @brief Write the speeds and feeds overlay into the display
  * 
  * @param active - true to activate the EMS overlay, false to deactivate it.
+ * @param speed - the initial speed (expected in IPM) 
+ * @param monitor - true to continuously monitor and update the speed
+ * @param monitor - true to continuously monitor and update the speed
+ * @param get_speed - fucntion to call to obtain speed when monitoring.
+ */
+void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, std::function<float()> get_speed)
+{
+    if(active)
+    {
+        if(!monitor) this->fas_overlay(active, speed);
+        else
+        {
+            if(_fas_runner == NULL)
+            {
+                Logger.Info(F("... Creating Feeds and Speeds Monitoring task."));
+                this->_fas_break = false;
+                FAS_TaskArgs* args = new FAS_TaskArgs { this, std::move(get_speed) };
+                xTaskCreatePinnedToCore(fas_runner, "Feeds and Speeds Watcher", 4096, args, 1, &_fas_runner, 1);
+            }
+        }
+    }
+    else
+    {
+        if(_fas_runner == NULL) this->fas_overlay(active, speed);   // no fas runner, so treat this as a one time invocation
+        else
+        {
+            Logger.Info(F("... Sending termination request to Feeds and Speeds Monitoring task."));
+            this->_fas_break = true;
+        }
+    }
+}
+
+/**
+ * @brief Task function monitoring the speed and updating the feeds and speeds panel
+ * @param args - pointer to task arguments
+ */
+void Display::fas_runner(void* args) 
+{
+    FAS_TaskArgs* _args = static_cast<FAS_TaskArgs*>(args);
+    Display* _this = _args->self;
+    Logger.Info(F("... Feeds and Speeds Monitoring started."));
+    for(;;)
+    {
+        if(_this->_fas_break)
+        {
+            Logger.Info(F("... Feeds and Speeds Monitoring task received termination request"));
+            break;
+        }
+        float speed = _args->speed_function();
+        _this->fas_overlay(true, speed);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    _this->fas_overlay(false, 0);
+    
+    Logger.Info(F("... Feeds and Speeds Monitoring complete."));
+    _this->_fas_runner = NULL;
+    _this->_fas_break = false;
+    delete _args;
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Intenral method to Write the speeds and feeds overlay into the display
+ * 
+ * @param active - true to activate the EMS overlay, false to deactivate it.
  * @param speed - the speed (expected in IPM) 
  */
-void Display::feeds_and_speeds_overlay(bool active, float speed)
+void Display::fas_overlay(bool active, float speed)
 {
     LGFX_Sprite overlay(this);
     overlay.setColorDepth(16);

@@ -203,9 +203,11 @@ public:
      * @brief Write the speeds and feeds overlay into the display
      * 
      * @param active - true to activate the overlay, false to deactivate it. 
-     * @param speed - the speed (expected in IPM)
+     * @param speed - the initial speed (expected in IPM)
+     * @param monitor - true to continuously monitor and update the speed
+     * @param get_speed - fucntion to call to obtain speed when monitoring.
      */
-    void feeds_and_speeds_overlay(bool active, float speed);    
+    void feeds_and_speeds_overlay(bool active, float speed=0, bool monitor=true, std::function<float()> get_speed=NULL);    
 
     /**
      * @brief manage the action overlay
@@ -266,6 +268,12 @@ public:
      */
     static void homeing_animation_runner(void* args);
 
+    /**
+     * @brief Task function monitoring the speed and updating the feeds and speeds panel
+     * @param args - pointer to task arguments
+     */
+    static void fas_runner(void* args);
+
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
     lgfx::Touch_XPT2046 _touch;
@@ -282,6 +290,14 @@ public:
      * 
      */
     void IRAM_ATTR processTouchInterrupt();
+
+    /**
+     * @brief Intenral method to Write the speeds and feeds overlay into the display
+     * 
+     * @param active - true to activate the EMS overlay, false to deactivate it.
+     * @param speed - the speed (expected in IPM) 
+     */
+    void fas_overlay(bool active, float speed);
 
     #pragma region homing animation methods
     /**
@@ -326,10 +342,17 @@ public:
     LGFX_Sprite* _homingSprite = nullptr;
     bool _paused = false;
     bool _homing_animation_break = false;
+    bool _fas_break = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
+    TaskHandle_t _fas_runner = NULL;
     volatile SemaphoreHandle_t _display_mutex;
 };
 
+struct FAS_TaskArgs
+{
+    Display* self;
+    std::function<float()> speed_function;
+};
 
 #endif //_DISPLAY_H_

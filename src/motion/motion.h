@@ -42,6 +42,7 @@
 #define LEADSCREW_LEAD_MM 4.0f
 #define GEAR_RATIO 20.0f / 80.0f
 #define MM_PER_INCH 25.4f
+#define FREQUENCY_INCREMENT 10
 
 enum class BLADE_STATE : bool {
     STOPPED,
@@ -184,6 +185,13 @@ class Motion
         * @return Feed rate in inches per minute.
         */
         float feed_rate_ipm();
+
+        /**
+         * @brief Processes wheel movement events and takes the appropriate actions depending on hte motion state.
+         * @param direction - the direction of the wheel movement.
+         * @param steps - the number of steps moved.
+         */
+        void process_wheel_movement(int direction, int steps); 
 
     protected:
 

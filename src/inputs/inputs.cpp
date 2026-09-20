@@ -114,10 +114,7 @@ void Inputs::resume_monitoring() { this->_pause = false; }
  * 
  * @return reference to a std::array of input_entry_t types.  
  */
-std::array<input_entry_t, 16>& Inputs::get_inputs()
-{
-    return __inputs;
-}
+std::array<input_entry_t, 16>& Inputs::get_inputs() {  return __inputs; }
 
 /**
  * @brief Registers a command for a specific GPIO
@@ -236,10 +233,9 @@ void Inputs::wheel_runner(void* args)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         // this section is executed for every wheel position change.
-        Logger.Info_f(F("Wheel change: position %d, direction %d"), _this->_wheel_position, _this->_direction);
+        if(_this->_wheel_callback != NULL) _this->_wheel_callback(_this->_direction, 1);
     }
 }
-
 
 /**
  * @brief Event handler handling input change events on the PCF8575 

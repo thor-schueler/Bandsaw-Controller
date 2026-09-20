@@ -123,13 +123,21 @@ class Inputs {
     void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
 
     /**
+     * @brief Sets the callback function for wheel events.
+     * @param callback - the function to call when wheel events occur. Callback is called with two parameters: 
+     * the direction of the wheel movement and the number of steps moved.
+     */
+    void register_wheel_callback(std::function<void(int, int)> callback) { this->_wheel_callback = callback; };
+
+    void test() {};
+
+    /**
      * @brief Reads a specific GPIO on the PCF8575 extender.
      * 
      * @param gpio - GPIO to read
      * @return uint8_t - the state of the GPIO
      */
     uint8_t digitalReadEx(uint8_t gpio);
-
 
   private: 
 
@@ -164,6 +172,8 @@ class Inputs {
      */
     static void IRAM_ATTR handle_encoder_change(void* arg);    
 
+
+    std::function<void(int, int)> _wheel_callback = NULL;
     inline static PCF8575* _pcf8575 = NULL;
     inline static TaskHandle_t _extendedGPIOWatcher = NULL;
     TaskHandle_t _wheelRunner;
