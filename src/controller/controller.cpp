@@ -58,8 +58,12 @@ void Controller::begin()
     this->_inputs->begin();
 
 
-    if(this->_inputs->digitalReadEx(EXT_GPIO_EMS)) this->_display->draw_canvas(); 
-                // only build canvas if EMS is not active
+    if(this->_inputs->digitalReadEx(EXT_GPIO_EMS))
+    { 
+        // only build canvas if EMS is not active
+        this->_display->draw_canvas();
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+    }
 
     this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
     this->_inputs->start_monitoring();
@@ -155,7 +159,7 @@ void Controller::manage_air(uint8_t gpio, const char* command)
     uint8_t is_on = !this->_inputs->digitalReadEx(EXT_GPIO_AIR_ON);
                                                 // inputs are active low!
 
-    air_state_t s = this->_motion->manage_air(is_on, is_auto);
+    air_state_t s = this->_motion->manage_air(is_on, is_auto, [this](uint8_t gpio, uint8_t state){  this->_display->set_button_tab(gpio, (touch_tab_state_t)state); });
     if(s == AIR_STATE::ON)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
@@ -190,7 +194,7 @@ void Controller::manage_coolant(uint8_t gpio, const char* command)
     uint8_t is_on = !this->_inputs->digitalReadEx(EXT_GPIO_LUBE_ON);
                                                 // inputs are active low!
 
-    coolant_state_t s = this->_motion->manage_coolant(is_on, is_auto);
+    coolant_state_t s = this->_motion->manage_coolant(is_on, is_auto, [this](uint8_t gpio, uint8_t state){  this->_display->set_button_tab(gpio, (touch_tab_state_t)state); });
     if(s == COOLANT_STATE::ON)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
@@ -257,6 +261,7 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
         this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
         this->_display->resume_tasks();
         this->_inputs->resume_monitoring();
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
     }
 }
 
@@ -276,7 +281,7 @@ void Controller::home(uint8_t gpio, const char* command)
     if(this->_motion->get_state() == MOTION_STATE::IDLE)
     {
         this->_display->set_workarea_title(homing_title, homing_title_size, "");
-        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm());
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
         this->_display->start_homing_animation();
         this->_motion->home([this](){ _display->homing_complete();}); 
     }

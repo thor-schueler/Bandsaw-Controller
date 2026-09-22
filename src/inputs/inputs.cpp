@@ -233,7 +233,7 @@ void Inputs::wheel_runner(void* args)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         // this section is executed for every wheel position change.
-        if(_this->_wheel_callback != NULL) _this->_wheel_callback(_this->_direction, 1);
+        if(_this->_wheel_callback != NULL) _this->_wheel_callback(_this->_direction, _this->_wheel_position);
     }
 }
 

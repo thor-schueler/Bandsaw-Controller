@@ -1,7 +1,7 @@
 {
     "port": "COM3",
     "board": "esp32:esp32:esp32",
-    "prebuild": "C:/Users/thort/AppData/Local/Python/pythoncore-3.14-64/python.exe ./increment_version.py",
+    "prebuild": "python3.exe ./increment_version.py",
     "postbuild": " ",
     "output": "./build",
     "buildPreferences": [

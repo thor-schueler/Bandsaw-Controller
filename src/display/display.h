@@ -340,9 +340,9 @@ public:
 
 
     LGFX_Sprite* _homingSprite = nullptr;
-    bool _paused = false;
-    bool _homing_animation_break = false;
-    bool _fas_break = false;
+    volatile bool _paused = false;
+    volatile bool _homing_animation_break = false;
+    volatile bool _fas_break = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;

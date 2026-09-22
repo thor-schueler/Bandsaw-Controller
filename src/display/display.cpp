@@ -133,6 +133,7 @@ void Display::begin() {
     attachInterrupt(digitalPinToInterrupt(TOUCH_IRQ_PIN), std::bind(&Display::processTouchInterrupt, this), FALLING);
     if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
     {
+        // this is enabling touch interrupts on the XPT2046 chip.
         lgfx::spi::beginTransaction(SPI2_HOST, SPI_BUS_TOUCH_FREQUENCY, 0);
         lgfx::gpio_lo(CS_TOUCH_PIN);
         lgfx::spi::writeBytes(SPI2_HOST, &ctrl, 1);   // PD1=0, PD0=0 → IRQ enabled
@@ -279,7 +280,8 @@ void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, s
         if(!monitor) this->fas_overlay(active, speed);
         else
         {
-            if(_fas_runner == NULL)
+            if(_fas_runner != NULL) Logger.Info(F("... Feeds and Speeds Monitoring task already exists. Skipping..."));
+            else
             {
                 Logger.Info(F("... Creating Feeds and Speeds Monitoring task."));
                 this->_fas_break = false;
@@ -307,17 +309,24 @@ void Display::fas_runner(void* args)
 {
     FAS_TaskArgs* _args = static_cast<FAS_TaskArgs*>(args);
     Display* _this = _args->self;
+    float speed = -1;
     Logger.Info(F("... Feeds and Speeds Monitoring started."));
     for(;;)
     {
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if(_this->_paused) continue;
         if(_this->_fas_break)
         {
             Logger.Info(F("... Feeds and Speeds Monitoring task received termination request"));
             break;
         }
-        float speed = _args->speed_function();
-        _this->fas_overlay(true, speed);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        float s = _args->speed_function();
+        if(s!=speed)
+        {
+            speed = s;
+            _this->fas_overlay(true, speed);
+        }
+
     }
     _this->fas_overlay(false, 0);
     
@@ -455,11 +464,12 @@ void Display::touch_runner(void* args)
     Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {
+        vTaskDelay(10);
         if(shouldProcess)
         {
             // Wait for the notification to come from the event handler
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            if (_this->_paused) continue;
+            if (_this->_paused)  continue;
             if (_this->getTouch(&x, &y)) 
             {
                 for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
@@ -497,7 +507,6 @@ void Display::touch_runner(void* args)
                 gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);
             }
         }
-        vTaskDelay(10);
     }
     if(_this->_touchRunner != NULL) { vTaskDelete(_this->_touchRunner); _this->_touchRunner = NULL; }
 }
@@ -525,7 +534,6 @@ void Display::homeing_animation_runner(void* args)
     if(!_this->_paused)
     {
         _this->draw_homing_frame(255);
-        _this->feeds_and_speeds_overlay(false, 0);
         _this->actions_overlay(false, nullptr, 0, "");
         _this->set_workarea_title(nullptr, 0, "");
         _this->set_button_tab(EXT_GPIO_HOME_PIN, TOUCH_TAB_STATE::OFF);

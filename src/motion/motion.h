@@ -6,6 +6,7 @@
 
 #include "Arduino.h"
 #include <functional>
+#include <atomic>
 #include <TMCStepper.h>
 #include "driver/ledc.h"
 #include "src/logging/SerialLogger.h"
@@ -26,9 +27,6 @@
 // TMC2209 settings
 #define R_SENSE       0.10f
 #define DRIVER_ADDR   0b00
-#define HIGH_SPEED 1500
-#define BASE_SPEED 1500
-
 #define LIMIT_1_PIN 33
 #define LIMIT_2_PIN 35
 
@@ -43,6 +41,12 @@
 #define GEAR_RATIO 20.0f / 80.0f
 #define MM_PER_INCH 25.4f
 #define FREQUENCY_INCREMENT 10
+#define FREQUENCY_MAX 4000
+#define FREQUENCY_MIN 50
+#define FREQUENCY_HOME_INC 50
+#define FREQUENCY_HOME_START 500
+#define FREQUENCY_HOME 1500
+#define FREQUENCY_BASE 1000
 
 enum class BLADE_STATE : bool {
     STOPPED,
@@ -75,7 +79,7 @@ enum class MOTION_STATE : uint8_t {
     IDLE,
     HOMING,
     FEEDING,
-    RUNNING,
+    SETTINGS,
     SHUTDOWN
 };
 using motion_state_t = MOTION_STATE;
@@ -135,18 +139,22 @@ class Motion
          * 
          * @param gpio_on - the state of the always on switch
          * @param gpio_auto - the state of the auto switch
+         * @param indicator_callback - callback function invoked by the monitoring job when in AUTO mode
+         * to set the correct indicator in the UI.
          * @return air_state_t - the actual state of the solenoid after the operation
          */
-        air_state_t manage_air(uint8_t gpio_on, uint8_t gpio_auto);
+        air_state_t manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function<void(uint8_t, uint8_t)> indicator_callback);
 
         /**
          * @brief Manages the coolant solenoid based on the switch state
          * 
          * @param gpio_on - the state of the always on switch
          * @param gpio_auto - the state of the auto switch
+         * @param indicator_callback - callback function invoked by the monitoring job when in AUTO mode
+         * to set the correct indicator in the UI.
          * @return coolant_state_t - the actual state of the solenoid after the operation
          */
-        coolant_state_t manage_coolant(uint8_t gpio_on, uint8_t gpio_auto);
+        coolant_state_t manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::function<void(uint8_t, uint8_t)> indicator_callback);
 
         /**
          * @brief Manages the EMS shutdown and startup
@@ -209,7 +217,6 @@ class Motion
          */        
         static void IRAM_ATTR limit_isr(void * arg);
 
-
         /**
          * @brief Task function performing the homing to of the feed carriage
          * 
@@ -217,21 +224,50 @@ class Motion
          */
         static void homing_runner(void * args);
 
+        /**
+         * @brief Task function performing manual movement based on the wheel motion
+         * 
+         * @param args - pointer to task arguments 
+         */
+        static void manual_pulse_runner(void * args);
+
+        /**
+         * @brief Task function monitoring the blade state to enable air and collant when on auto....
+         * 
+         * @param args - task arguments
+         */
+        static void blade_monitor(void * args);
+
 
     private:
 
+        /**
+         * @brief Creates a manual step pulse for the stepper. Used for manual operation
+         * 
+         * @param dir - direction to move the stepper in. True to step into the feed.
+         */
+        void step(bool dir);
+
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
+        std::atomic<int16_t> _queued_steps = 0;
+        std::atomic<uint16_t> _steps_taken = 0;
+        std::atomic<int64_t> _time_stamp = esp_timer_get_time();
+        std::atomic<uint16_t> _frequency = 0;
+        
         volatile bool _home_limit = false;
         volatile bool _feed_limit = false;
         volatile bool _job_should_exit = false;
+        volatile bool _blade_job_should_exit = false;
         volatile bool _stall_alert = false;
+        
         volatile motion_state_t _state = MOTION_STATE::IDLE;
         volatile ems_state_t _ems_state = EMS_STATE::RUNNING;
         volatile air_state_t _air_state = AIR_STATE::OFF;
         volatile coolant_state_t _coolant_state = COOLANT_STATE::OFF;
-        uint16_t _frequency = BASE_SPEED;
         TaskHandle_t _homing_task = NULL;
+        TaskHandle_t _pulse_task = NULL;
+        TaskHandle_t _blade_task = NULL;
 };
 
 struct TaskArgs
@@ -240,7 +276,11 @@ struct TaskArgs
     std::function<void()> callback;
 };
 
-
+struct BladeTaskArgs
+{
+    Motion* self;
+    std::function<void(uint8_t, uint8_t)> callback;
+};
 
 
 

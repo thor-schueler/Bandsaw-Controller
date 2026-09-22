@@ -3,6 +3,14 @@
 
 #include "motion.h"
 
+ledc_channel_config_t _channel_config = {
+    .gpio_num   = STEP_PIN,
+    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    .channel    = LEDC_CHANNEL_0,
+    .timer_sel  = LEDC_TIMER_0,
+    .duty       = 512,  // 50% duty cycle on 12-bit resolution
+    .hpoint     = 0
+ };
 
 /**
  * @brief Construct a new Motion object
@@ -20,6 +28,10 @@ Motion::Motion()
  */
 Motion::~Motion()
 {
+    if(this->_pulse_task != NULL) vTaskDelete(this->_pulse_task);
+    this->_job_should_exit = true;
+    this->_pulse_task = NULL;
+
     delete this->_tmc_driver;
     this->_tmc_serial->end();
     delete this->_tmc_serial;
@@ -41,15 +53,15 @@ void Motion::begin()
     Logger.Info(F("...   Configure solenoid GPIO."));
     pinMode(SOLENOID_A_PIN, OUTPUT);
     pinMode(SOLENOID_B_PIN, OUTPUT);
-    digitalWrite(SOLENOID_A_PIN, HIGH);
-    digitalWrite(SOLENOID_B_PIN, HIGH);
+    digitalWrite(SOLENOID_A_PIN, LOW);                      // active high
+    digitalWrite(SOLENOID_B_PIN, LOW);                      // active high
 
      // Attach limit switches
     Logger.Info(F("...   Configure end stop limit switches."));
     pinMode(LIMIT_1_PIN, INPUT);
     pinMode(LIMIT_2_PIN, INPUT);
-    //attachInterruptArg(LIMIT_1_PIN, limit_isr, this, CHANGE);  
-    //attachInterruptArg(LIMIT_2_PIN, limit_isr, this, CHANGE); 
+    attachInterruptArg(LIMIT_1_PIN, limit_isr, this, FALLING);  
+    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, FALLING); 
 
     // Stepper pins
     Logger.Info(F("...   Configure stepper pins GPIO."));
@@ -66,23 +78,24 @@ void Motion::begin()
         .speed_mode      = LEDC_HIGH_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_12_BIT,
         .timer_num       = LEDC_TIMER_0,
-        .freq_hz         = BASE_SPEED,
+        .freq_hz         = FREQUENCY_BASE,
         .clk_cfg         = LEDC_USE_APB_CLK,
     };
 
-    ledc_channel_config_t _channel_config = {
-        .gpio_num   = STEP_PIN,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
-        .channel    = LEDC_CHANNEL_0,
-        .timer_sel  = LEDC_TIMER_0,
-        .duty       = 512,  // 50% duty cycle on 12-bit resolution
-        .hpoint     = 0
-    };
-    this->_frequency = BASE_SPEED;
     esp_err_t r = ledc_timer_config(&_timer_config);
     if(r != ESP_OK) Logger.Error_f(F("PWM timer configuration failed with 0x%04X"), r);
     r = ledc_channel_config(&_channel_config);
     if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
+    r = ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0); 
+    pinMode(STEP_PIN, OUTPUT); 
+    this->_frequency = 0;
+                // Stop LEDC PWM for now, force STEP low this allow for manual control. 
+                // we are only using PWM feed for homing and feeding. 
+    if(r != ESP_OK) Logger.Error_f(F("PWM pausing failed with 0x%04X"), r);
+
+    // Task Registration
+    Logger.Info(F("...   Starting Manual Pulse Runner Task."));
+    xTaskCreatePinnedToCore(manual_pulse_runner, "manualPulseRunner", 2048, this, 1, &_pulse_task, 1);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
@@ -138,11 +151,26 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     if ((currentTime - lastDebounceTime) < 250) return;                         // ignore bounces
 
     Motion *_this = reinterpret_cast<Motion *>(arg);  
-    _this->_home_limit = digitalRead(LIMIT_1_PIN);                              // active low
-    _this->_feed_limit = digitalRead(LIMIT_2_PIN);                              // active low
-    if(!_this->_home_limit || !_this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
-    if(!_this->_home_limit) digitalWrite(DIR_PIN, HIGH);                        // set allowable direction
-    if(!_this->_feed_limit) digitalWrite(DIR_PIN, LOW);
+    bool hl = false;
+    bool fl = false;
+
+    bool dir = digitalRead(DIR_PIN);
+    for(int i=0; i<10; i++)
+    {
+        hl |= digitalRead(LIMIT_1_PIN);
+        fl |= digitalRead(LIMIT_2_PIN);
+        delayMicroseconds(1);
+    }
+
+    //_this->_home_limit = !digitalRead(LIMIT_1_PIN);                              // active low
+    //_this->_feed_limit = !digitalRead(LIMIT_2_PIN);                              // active low
+    //if((_this->_home_limit &&  !digitalRead(DIR_PIN)) || (_this->_feed_limit) && digitalRead(DIR_PIN)) 
+    if((!hl && !dir) || (!fl && dir))
+    {
+        if(!hl && !dir) _this->_home_limit = true;
+        if(!fl && dir) _this->_feed_limit = true;
+        digitalWrite(EN_PIN, HIGH);  // disable Stepper
+    }
 }
 
 /**
@@ -199,51 +227,110 @@ blade_state_t Motion::deactivate_blade()
 }
 
 /**
+ * @brief Task function monitoring the blade state to enable air and collant when on auto....
+ * 
+ * @param args - task arguments
+ */
+void Motion::blade_monitor(void * args)
+{
+    BladeTaskArgs* _args = static_cast<BladeTaskArgs*>(args);
+    Motion* _this = _args->self;
+    Logger.Info(F("... Starting blade monitoring task"));
+    
+    for(;;)
+    {
+        if(_this->_blade_job_should_exit) break;
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        if(_this->get_blade_status() == BLADE_STATE::STOPPED)
+        {
+            if(_this->_air_state == AIR_STATE::AUTO && digitalRead(SOLENOID_A_PIN) == HIGH)
+            {
+                digitalWrite(SOLENOID_A_PIN, LOW);
+                _args->callback(5, 2);
+            } 
+            if(_this->_coolant_state == COOLANT_STATE::AUTO && digitalRead(SOLENOID_B_PIN) == HIGH)
+            {
+                digitalWrite(SOLENOID_B_PIN, LOW); 
+                _args->callback(7, 2);
+            }
+        }
+        else 
+        {
+            if(_this->_air_state == AIR_STATE::AUTO && digitalRead(SOLENOID_A_PIN) == LOW) 
+            {
+                digitalWrite(SOLENOID_A_PIN, HIGH);
+                _args->callback(5, 0);
+            }
+            if(_this->_coolant_state == COOLANT_STATE::AUTO && digitalRead(SOLENOID_B_PIN) == LOW)
+            {   
+                digitalWrite(SOLENOID_B_PIN, HIGH);
+                _args->callback(7, 0);
+            }  
+        }
+    }
+    Logger.Info(F("... Blade monitoring task complete"));
+    _this->_blade_task = NULL;
+    delete _args;
+    vTaskDelete(NULL);
+}
+
+/**
  * @brief Manages the air blast solenoid based on the switch state
  * 
  * @param gpio_on - the state of the always on switch
  * @param gpio_auto - the state of the auto switch
+ * @param indicator_callback - callback function invoked by the monitoring job when in AUTO mode
+ * to set the correct indicator in the UI.
  * @return air_state_t - the actual state of the solenoid after the operation
  */
-air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto)
+air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function<void(uint8_t, uint8_t)> indicator_callback)
 {
     if(gpio_auto == LOW && gpio_on == LOW)
     {
-        digitalWrite(SOLENOID_A_PIN, HIGH);
+        digitalWrite(SOLENOID_A_PIN, LOW);
         Logger.Info(F("... Air blast solendoid switched off"));
 
-        //
-        // TODO - remove monitoring task if necessary
-        //
+        if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
+        {
+            this->_blade_job_should_exit = true;
+            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+        }
 
-        return AIR_STATE::OFF;
+        this->_air_state = AIR_STATE::OFF;
     }
     if(gpio_on == HIGH)
     {
-        //
-        // TODO - remove monitoring task if necessary
-        //
+        if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
+        {
+            this->_blade_job_should_exit = true;
+            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+        }
 
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
         {
             Logger.Info(F("... Air blast activation request received, but EMS is active. Ignoring..."));
-            return AIR_STATE::AUTO;   
+            this->_air_state = AIR_STATE::AUTO;   
         }
-        digitalWrite(SOLENOID_A_PIN, LOW);
+        digitalWrite(SOLENOID_A_PIN, HIGH);
         Logger.Info(F("... Air blast solendoid switched on"));
-        return AIR_STATE::ON;
+        this->_air_state = AIR_STATE::ON;
     }
     if(gpio_auto)
     {
-        digitalWrite(SOLENOID_A_PIN, HIGH);
-        Logger.Info(F("... Air blast solendoid switched to auto. Monitoring feed has started"));
+        digitalWrite(SOLENOID_A_PIN, LOW);
+        Logger.Info(F("... Air blast solendoid switched to auto. Monitoring has started"));
 
-        //
-        // TODO - start monitoring task
-        //
+        if(this->_blade_task == NULL) 
+        {
+            this->_blade_job_should_exit = false;
+            BladeTaskArgs *args = new BladeTaskArgs{ this, indicator_callback };
+            xTaskCreatePinnedToCore(blade_monitor, "Blade Monitor", 2048, args, 1, &_blade_task, 1);
+        }
 
-        return AIR_STATE::AUTO;       
+        this->_air_state =  AIR_STATE::AUTO;       
     }
+    return this->_air_state;
 }
 
 /**
@@ -251,34 +338,58 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto)
  * 
  * @param gpio_on - the state of the always on switch
  * @param gpio_auto - the state of the auto switch
+ * @param indicator_callback - callback function invoked by the monitoring job when in AUTO mode
+ * to set the correct indicator in the UI.
  * @return coolant_state_t - the actual state of the solenoid after the operation
  */
-coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto)
+coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::function<void(uint8_t, uint8_t)> indicator_callback)
 {
     if(gpio_auto == LOW && gpio_on == LOW)
     {
-        digitalWrite(SOLENOID_B_PIN, HIGH);
+        digitalWrite(SOLENOID_B_PIN, LOW);
         Logger.Info(F("... Coolant solendoid switched off"));
-        return COOLANT_STATE::OFF;
+
+        if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
+        {
+            this->_blade_job_should_exit = true;
+            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+        this->_coolant_state = COOLANT_STATE::OFF;
     }
     if(gpio_on == HIGH)
     {
+        if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
+        {
+            this->_blade_job_should_exit = true;
+            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
         {
             Logger.Info(F("... Coolant activation request received, but EMS is active. Ignoring..."));
-            return COOLANT_STATE::AUTO;   
+            this->_coolant_state = COOLANT_STATE::AUTO;  
+            return this->_coolant_state; 
         }
         
-        digitalWrite(SOLENOID_B_PIN, LOW);
+        digitalWrite(SOLENOID_B_PIN, HIGH);
         Logger.Info(F("... Coolant solendoid switched on"));
-        return COOLANT_STATE::ON;
+        this->_coolant_state = COOLANT_STATE::ON;
     }
     if(gpio_auto)
     {
-        digitalWrite(SOLENOID_B_PIN, HIGH);
-        Logger.Info(F("... Coolant solendoid switched to auto. Monitoring feed has started"));
-        return COOLANT_STATE::AUTO;       
+        digitalWrite(SOLENOID_B_PIN, LOW);
+        Logger.Info(F("... Coolant solendoid switched to auto. Monitoring has started"));
+
+        if(this->_blade_task == NULL) 
+        {
+            this->_blade_job_should_exit = false;
+            BladeTaskArgs *args = new BladeTaskArgs{ this, indicator_callback };
+            xTaskCreatePinnedToCore(blade_monitor, "Blade Monitor", 2048, args, 1, &_blade_task, 1);
+        }
+        this->_coolant_state = COOLANT_STATE::AUTO;       
     }
+    return this->_coolant_state;
 }
 
 /**
@@ -308,9 +419,11 @@ ems_state_t Motion::manage_ems_state(uint8_t gpio_state)
         Logger.Info(F("... Emergency shutdown performed, blade, feed and solenoids have been shutdown."));
         this->_ems_state = EMS_STATE::SHUTDOWN;
         this->_state = MOTION_STATE::SHUTDOWN;
+        this->_frequency = 0;
     }
     else
     {
+        this->_frequency = 0;
         this->_ems_state = EMS_STATE::RUNNING;
         this->_state = MOTION_STATE::IDLE;
         Logger.Info(F("... Emergency shutdown cleared"));
@@ -345,30 +458,55 @@ void Motion::homing_runner(void * args)
 {
     TaskArgs* _args = static_cast<TaskArgs*>(args);
     Motion* _this = _args->self;
-    int i=0;
+    uint16_t i=0;
     uint16_t _s = _this->_frequency;
+    bool startup_complete = false;
 
     Logger.Info(F("... Starting homing task"));
     _this->_state = MOTION_STATE::HOMING;
-    _this->_frequency = HIGH_SPEED;
-    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+    _this->_frequency = FREQUENCY_HOME_START; // FREQUENCY_HOME
+
+    esp_err_t r = ledc_channel_config(&_channel_config);
+    if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
+    r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+    if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
+            // enable PWM to drive the stepper
+
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
-    while(digitalRead(LIMIT_1_PIN) == HIGH)
+    digitalWrite(DIR_PIN, LOW);         // set direction towards home
+    digitalWrite(EN_PIN, LOW);          // enable stepper
+    while(_this->_home_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
+        if(_this->_frequency < FREQUENCY_HOME && !startup_complete) 
+        {
+            _this->_frequency += FREQUENCY_HOME_INC;
+            if(_this->_frequency > FREQUENCY_HOME) 
+            {
+                _this->_frequency = FREQUENCY_HOME;
+                startup_complete = true;
+            }
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+        }
         if(_this->_job_should_exit) break;
 
-        digitalWrite(DIR_PIN, LOW);         // set direction towards home
-        digitalWrite(EN_PIN, LOW);          // enable stepper
-        vTaskDelay(100);                    // delay 100ms. There is no risk here as the interrupt handler will
+        vTaskDelay(50);                     // delay 100ms. There is no risk here as the interrupt handler will
                                             // disable the stepper as soon as the home limit has been hit. 
         i++;
-        if(i > 100) break;
     } 
 
     digitalWrite(EN_PIN, HIGH);             // disable the stepper in case we terminated due to EMS or user termination.
-    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s); 
-    _this->_frequency = _s;
+
+
+    r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s < FREQUENCY_MIN ? FREQUENCY_MIN : _s); 
+    if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
+    r = ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    pinMode(STEP_PIN, OUTPUT); 
+                // Stop LEDC PWM for now, force STEP low this allow for manual control. 
+                // we are only using PWM feed for homing and feeding. 
+    if(r != ESP_OK) Logger.Error_f(F("PWM channel pausing failed with 0x%04X"), r);
+    _this->_frequency = 0;
+
     _args->callback();
     if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
     {
@@ -394,6 +532,82 @@ void Motion::homing_runner(void * args)
 }
 
 /**
+ * @brief Creates a manual step pulse for the stepper. Used for manual operation
+ * 
+ * @param dir - direction to move the stepper in. True to step into the feed.
+ */
+void Motion::step(bool dir)
+{
+    //static uint64_t last_pulse = esp_timer_get_time();
+    static TimerHandle_t timer = NULL;
+    static Motion* _this = nullptr;
+
+    if(this->_state != MOTION_STATE::IDLE)  return;
+                    // when we are not in idle state, we should not do anything here as 
+                    // we are either autonomously feeding, homing, settings or in shutdown.
+
+                               
+    if(timer == NULL)
+    {
+        digitalWrite(EN_PIN, LOW);
+        //this->_frequency = 0;
+        _this = this;
+        timer = xTimerCreate("JogTimeout", pdMS_TO_TICKS(5000), pdFALSE, this,
+            [](TimerHandle_t t) 
+            {
+                if(_this->_state == MOTION_STATE::IDLE) digitalWrite(EN_PIN, HIGH); 
+                _this->_steps_taken = 0;
+                //_this->_frequency = 0;
+                timer = NULL; 
+                Logger.Info(F("... Stepper disabled due to idle timout."));
+            });
+    }
+    else
+    {
+        xTimerReset(timer, 0);
+        //uint32_t period = esp_timer_get_time() - last_pulse;
+        //float f = 1000000.0f / period;
+        //this->_frequency = (this->_frequency * 0.8f) + (f * 0.2f);
+    }
+    //last_pulse = esp_timer_get_time();
+
+    digitalWrite(DIR_PIN, dir);
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(250);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(250);
+    this->_steps_taken++;
+    //Logger.Info_f(F("... Manual pulse %u"), this->_frequency);
+}
+
+/**
+ * @brief Task function performing manual movement based on the wheel motion
+ * 
+ * @param args - pointer to task arguments 
+ */
+void Motion::manual_pulse_runner(void * args)
+{
+    Motion* _this = static_cast<Motion*>(args);
+    Logger.Info(F("... Start manual pulse runner task"));
+    for(;;)
+    {
+        if(_this->_queued_steps > 0)
+        {
+            _this->step(true);
+            _this->_queued_steps --;
+        }
+        else if(_this->_queued_steps < 0)
+        {
+            _this->step(false);
+            _this->_queued_steps ++;
+        }
+        if(_this->_queued_steps == 0) taskYIELD();
+    }
+    _this->_pulse_task = NULL;
+    vTaskDelete(NULL);
+}
+
+/**
  * @brief Gets the current feed rate.
  *
  *      Assumptions:
@@ -409,8 +623,19 @@ float Motion::feed_rate_ipm()
     const float microsteps_per_rev = MOTOR_STEPS_PER_REV * MICROSTEPS;
     const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
     const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
-    const float mm_per_min = this->_frequency * mm_per_microstep * 60.0f;
-    return mm_per_min / MM_PER_INCH;  
+
+    if(this->_state == MOTION_STATE::HOMING || this->_state == MOTION_STATE::FEEDING)
+    {
+        const float mm_per_min = this->_frequency * mm_per_microstep * 60.0f;
+        return mm_per_min / MM_PER_INCH;  
+    }
+    else
+    {
+        const uint32_t elapsed = esp_timer_get_time() - this->_time_stamp;
+        const float mm_per_sec = (this->_steps_taken * mm_per_microstep * 1000000.0f ) / elapsed;
+        if(elapsed > 5000000) this->_steps_taken = 0;
+        return 60.0f * mm_per_sec / MM_PER_INCH;
+    }
 }
 
 /**
@@ -420,12 +645,31 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
-    Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
-    if(this->_state == MOTION_STATE::HOMING)
+    if(this->_state == MOTION_STATE::SETTINGS) 
     {
-        // when homing, the wheel will increase and decrease the homing speed....
-        this->_frequency += direction * FREQUENCY_INCREMENT;
-        ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_frequency); 
+        // TODO - whatever we need to do during settings management. 
+        Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
+    }
+    if(this->_state == MOTION_STATE::HOMING || this->_state == MOTION_STATE::FEEDING)
+    {
+        // when homing or feeding, the wheel will increase and decrease the 
+        // homing speed....
+        uint16_t f = this->_frequency + direction * FREQUENCY_INCREMENT;
+        if(f < FREQUENCY_MIN) f = FREQUENCY_MIN;
+        if(f > FREQUENCY_MAX) f = FREQUENCY_MAX;
+        if(f != this->_frequency)
+        {
+            this->_frequency = f;
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_frequency);
+            Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
+        } 
+    }
+    if(this->_state == MOTION_STATE::IDLE)
+    {
+        // when idle the wheel will manually feed the carriage in that case, we will 
+        // need to generate pulses in sync with the wheel motion. 
+        if(this->_steps_taken == 0) this->_time_stamp = esp_timer_get_time();
+        this->_queued_steps += direction > 0  ? 10 :  -10;
     }
 }
