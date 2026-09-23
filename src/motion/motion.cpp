@@ -95,7 +95,7 @@ void Motion::begin()
 
     // Task Registration
     Logger.Info(F("...   Starting Manual Pulse Runner Task."));
-    xTaskCreatePinnedToCore(manual_pulse_runner, "manualPulseRunner", 2048, this, 1, &_pulse_task, 1);
+    xTaskCreatePinnedToCore(manual_feed_runner, "manualFeedRunner", 2048, this, 1, &_pulse_task, 1);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
@@ -589,6 +589,97 @@ void Motion::step(bool dir)
  * 
  * @param args - pointer to task arguments 
  */
+void Motion::manual_feed_runner(void* args)
+{
+    constexpr int32_t DEAD_BAND = 20;
+    constexpr uint32_t STOP_DELAY_MS = 100;
+
+    bool running = false;
+    bool direction = true;
+
+    uint64_t last_us = esp_timer_get_time();
+    float fractional_steps = 0.0f;
+    uint32_t near_zero_since = 0;
+
+    Motion* _this = static_cast<Motion*>(args);
+    Logger.Info(F("... Start manual pulse runner task"));
+    for(;;)
+    {
+        uint64_t now_us = esp_timer_get_time();
+
+        float dt = static_cast<float>(now_us - last_us) / 1000000.0f;
+        last_us = now_us;
+        int32_t balance = _this->_step_balance.load();
+        bool desired_direction = (balance >= 0);
+
+        // 
+        // Start motion
+        //
+        if(!running && abs(balance) > DEAD_BAND)
+        {
+            digitalWrite(DIR_PIN, desired_direction);
+            direction = desired_direction;
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_manual_frequency.load());
+            ledc_channel_config(&_channel_config);
+            running = true;
+            fractional_steps = 0.0f;
+        }
+
+        //
+        // Direction change
+        //
+        if(running && desired_direction != direction && abs(balance) > DEAD_BAND)
+        {
+            ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+            digitalWrite(DIR_PIN, desired_direction);
+            direction = desired_direction;
+            ledc_channel_config(&_channel_config);
+            fractional_steps = 0.0f;
+        }
+
+        //
+        // Account for emitted steps
+        //
+        if(running)
+        {
+            float emitted = static_cast<float>(_this->_manual_frequency.load()) * dt + fractional_steps;
+            int32_t whole_steps = static_cast<int32_t>(emitted);
+            fractional_steps = emitted - static_cast<float>(whole_steps);
+            if(whole_steps > 0)
+            {
+                if(direction) _this->_step_balance.fetch_sub(whole_steps);
+                else _this->_step_balance.fetch_add(whole_steps);
+            }
+        }
+
+        //
+        // Stop hysteresis
+        //
+        balance = _this->_step_balance.load();
+        if(abs(balance) < DEAD_BAND)
+        {
+            if(near_zero_since == 0) near_zero_since = millis();
+            if(running && millis() - near_zero_since > STOP_DELAY_MS)
+            {
+                ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+                running = false;
+            }
+        }
+        else
+        {
+            near_zero_since = 0;
+        }
+        taskYIELD();
+    }
+}
+
+
+
+/**
+ * @brief Task function performing manual movement based on the wheel motion
+ * 
+ * @param args - pointer to task arguments 
+ */
 void Motion::manual_pulse_runner(void * args)
 {
     Motion* _this = static_cast<Motion*>(args);
@@ -675,5 +766,6 @@ void Motion::process_wheel_movement(int direction, int steps)
         // need to generate pulses in sync with the wheel motion. 
         if(this->_steps_taken == 0) this->_time_stamp = esp_timer_get_time();
         this->_queued_steps += direction > 0  ? 10 :  -10;
+        this->_step_balance = this->_step_balance + (direction > 0 ? 100.0f : -100.0f);
     }
 }

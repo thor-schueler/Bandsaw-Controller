@@ -233,6 +233,13 @@ class Motion
         static void manual_pulse_runner(void * args);
 
         /**
+         * @brief Task function performing manual movement based on the wheel motion
+         * 
+         * @param args - pointer to task arguments 
+         */
+        static void manual_feed_runner(void* args);
+
+        /**
          * @brief Task function monitoring the blade state to enable air and collant when on auto....
          * 
          * @param args - task arguments
@@ -253,6 +260,10 @@ class Motion
         TMC2209Stepper* _tmc_driver = nullptr;
         std::atomic<int16_t> _queued_steps = 0;
         std::atomic<uint16_t> _steps_taken = 0;
+
+        std::atomic<int32_t> _step_balance{0};
+        std::atomic<uint16_t> _manual_frequency{800};
+
         std::atomic<int64_t> _time_stamp = esp_timer_get_time();
         std::atomic<uint16_t> _frequency = 0;
         
