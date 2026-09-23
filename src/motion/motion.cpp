@@ -602,7 +602,7 @@ void Motion::manual_feed_runner(void* args)
     uint32_t near_zero_since = 0;
 
     Motion* _this = static_cast<Motion*>(args);
-    Logger.Info(F("... Start manual pulse runner task"));
+    Logger.Info(F("... Start manual feed runner task"));
     for(;;)
     {
         uint64_t now_us = esp_timer_get_time();
@@ -621,8 +621,10 @@ void Motion::manual_feed_runner(void* args)
             direction = desired_direction;
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_manual_frequency.load());
             ledc_channel_config(&_channel_config);
+            digitalWrite(EN_PIN, LOW);
             running = true;
             fractional_steps = 0.0f;
+            Logger.Info(F("... Manual feed runner motion started"));
         }
 
         //
@@ -635,6 +637,7 @@ void Motion::manual_feed_runner(void* args)
             direction = desired_direction;
             ledc_channel_config(&_channel_config);
             fractional_steps = 0.0f;
+            Logger.Info(F("... Manual feed runner direction changed"));
         }
 
         //
@@ -662,7 +665,9 @@ void Motion::manual_feed_runner(void* args)
             if(running && millis() - near_zero_since > STOP_DELAY_MS)
             {
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+                digitalWrite(EN_PIN, HIGH);
                 running = false;
+                Logger.Info(F("... Manual feed runner motion stopped"));
             }
         }
         else
@@ -766,6 +771,6 @@ void Motion::process_wheel_movement(int direction, int steps)
         // need to generate pulses in sync with the wheel motion. 
         if(this->_steps_taken == 0) this->_time_stamp = esp_timer_get_time();
         this->_queued_steps += direction > 0  ? 10 :  -10;
-        this->_step_balance = this->_step_balance + (direction > 0 ? 100.0f : -100.0f);
+        this->_step_balance.fetch_add(direction > 0 ? 100 : -100);
     }
 }
