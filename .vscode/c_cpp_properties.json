@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "Arduino - Static",
-            "compilerPath": "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\2601\\bin\\xtensa-esp32-elf-g++",
+            "compilerPath": "C:/Users/HTXIn/AppData/Local/Arduino15/packages/esp32/tools/esp-x32/2601/bin/xtensa-esp32-elf-g++",
             "compilerArgs": [
                 "-MMD",
                 "-w",
@@ -16,7 +16,6 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/src/**/",
-
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\cores\\esp32",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\variants\\esp32",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\libraries\\SPI\\src",
@@ -26,7 +25,6 @@
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\libraries\\Network\\src",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\libraries\\FS\\src",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\libraries\\*\\src",
-
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32-libs\\*\\qio_qspi\\include",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32-libs\\*\\include\\**",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32-libs\\*\\include\\hal\\include",
@@ -35,23 +33,19 @@
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32-libs\\*\\include\\freertos\\FreeRTOS-Kernel\\portable\\xtensa\\include\\freertos",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\sys-include",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\sys-include\\**",
-
-
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include\\c++\\14.2.0",
-                "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include\\c++\\14.2.0\\**",                
+                "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include\\c++\\14.2.0\\**",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include\\c++\\14.2.0\\xtensa-esp-elf\\esp32",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\xtensa-esp-elf\\include\\c++\\14.2.0\\backward",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\lib\\gcc\\xtensa-esp-elf\\14.2.0\\include",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\*\\lib\\gcc\\xtensa-esp-elf\\14.2.0\\include-fixed",
-               
                 "${env:USERPROFILE}\\onedrive\\documents\\Arduino\\libraries\\**",
                 "${env:USERPROFILE}\\onedrive\\documents\\Arduino\\libraries\\*\\src\\**"
             ],
             "forcedInclude": [
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.*\\cores\\esp32\\Arduino.h",
                 "${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32-libs\\*\\include\\freertos\\esp_additions\\include\\idf_additions.h"
-                //"${env:USERPROFILE}\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-x32\\2302\\xtensa-esp32-elf\\sys-include\\time.h"
             ],
             "cStandard": "c11",
             "cppStandard": "c++17",

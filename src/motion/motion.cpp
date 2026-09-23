@@ -60,8 +60,8 @@ void Motion::begin()
     Logger.Info(F("...   Configure end stop limit switches."));
     pinMode(LIMIT_1_PIN, INPUT);
     pinMode(LIMIT_2_PIN, INPUT);
-    attachInterruptArg(LIMIT_1_PIN, limit_isr, this, FALLING);  
-    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, FALLING); 
+    attachInterruptArg(LIMIT_1_PIN, limit_isr, this, CHANGE);  
+    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, CHANGE); 
 
     // Stepper pins
     Logger.Info(F("...   Configure stepper pins GPIO."));
@@ -103,19 +103,19 @@ void Motion::begin()
     this->_tmc_driver->begin();
     this->_tmc_driver->toff(4);
     this->_tmc_driver->blank_time(24);
-    this->_tmc_driver->rms_current(2000);       // Maximum Stepper current
-    this->_tmc_driver->microsteps(4);           // Initial Microstep configuration. 
-    this->_tmc_driver->pwm_autoscale(true);     // Enable StealthChop
+    this->_tmc_driver->rms_current(MOTOR_CURRENT);      // Maximum Stepper current
+    this->_tmc_driver->microsteps(MOTOR_MICROSTEPS);    // Microsteps per step
+    this->_tmc_driver->intpol(true);
 
     //
     // StallGuard configuration
     //
-    this->_tmc_driver->en_spreadCycle(true);    // StallGuard ONLY works in SpreadCycle
-    this->_tmc_driver->pwm_autoscale(false);    // Disable StealthChop
-    this->_tmc_driver->TCOOLTHRS(0xFFFFF);      // Allow SG to operate at all speeds
-    this->_tmc_driver->SGTHRS(50);              // StallGuard threshold (tune this)
-    this->_tmc_driver->irun(31);
-    this->_tmc_driver->ihold(31);
+    this->_tmc_driver->en_spreadCycle(false);           // StallGuard ONLY works in SpreadCycle
+    this->_tmc_driver->pwm_autoscale(true);             // Enable Stealthchop
+    this->_tmc_driver->TCOOLTHRS(0);                    // Stallguard disabled at this time
+    this->_tmc_driver->SGTHRS(0);                       // Stallguard disabled at this time
+    this->_tmc_driver->irun(31);                        // Running current ratio, 31 = 100%
+    this->_tmc_driver->ihold(31);                       // Holding current ratio, 31 = 100%
 
     Logger.Info(F("...   TMC2209 initialized with StallGuard."));
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
@@ -153,17 +153,16 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     Motion *_this = reinterpret_cast<Motion *>(arg);  
     bool hl = false;
     bool fl = false;
-
     bool dir = digitalRead(DIR_PIN);
-    for(int i=0; i<10; i++)
-    {
-        hl |= digitalRead(LIMIT_1_PIN);
-        fl |= digitalRead(LIMIT_2_PIN);
-        delayMicroseconds(1);
-    }
+    //for(int i=0; i<10; i++)
+    //{
+    //    hl |= digitalRead(LIMIT_1_PIN);
+    //    fl |= digitalRead(LIMIT_2_PIN);
+    //    delayMicroseconds(1);
+    //}
 
-    //_this->_home_limit = !digitalRead(LIMIT_1_PIN);                              // active low
-    //_this->_feed_limit = !digitalRead(LIMIT_2_PIN);                              // active low
+    hl = digitalRead(LIMIT_1_PIN);                              // active low
+    fl = digitalRead(LIMIT_2_PIN);                              // active low
     //if((_this->_home_limit &&  !digitalRead(DIR_PIN)) || (_this->_feed_limit) && digitalRead(DIR_PIN)) 
     if((!hl && !dir) || (!fl && dir))
     {
@@ -171,6 +170,11 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
         if(!fl && dir) _this->_feed_limit = true;
         digitalWrite(EN_PIN, HIGH);  // disable Stepper
     }
+    if(hl) _this->_home_limit = false;
+    if(fl) _this->_feed_limit = false;
+    if(!hl && !dir) _this->_home_limit = true;
+    if(!fl && dir) _this->_feed_limit = true;
+    if(_this->_home_limit || _this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
 }
 
 /**
@@ -464,7 +468,7 @@ void Motion::homing_runner(void * args)
 
     Logger.Info(F("... Starting homing task"));
     _this->_state = MOTION_STATE::HOMING;
-    _this->_frequency = FREQUENCY_HOME_START; // FREQUENCY_HOME
+    _this->_frequency = FREQUENCY_HOME_START;
 
     esp_err_t r = ledc_channel_config(&_channel_config);
     if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
@@ -481,7 +485,7 @@ void Motion::homing_runner(void * args)
         if(_this->_frequency < FREQUENCY_HOME && !startup_complete) 
         {
             _this->_frequency += FREQUENCY_HOME_INC;
-            if(_this->_frequency > FREQUENCY_HOME) 
+            if(_this->_frequency >= FREQUENCY_HOME) 
             {
                 _this->_frequency = FREQUENCY_HOME;
                 startup_complete = true;
@@ -573,9 +577,9 @@ void Motion::step(bool dir)
 
     digitalWrite(DIR_PIN, dir);
     digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(250);
+    delayMicroseconds(350);
     digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(250);
+    delayMicroseconds(350);
     this->_steps_taken++;
     //Logger.Info_f(F("... Manual pulse %u"), this->_frequency);
 }
@@ -620,7 +624,7 @@ void Motion::manual_pulse_runner(void * args)
  */
 float Motion::feed_rate_ipm()
 {
-    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * MICROSTEPS;
+    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS);
     const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
     const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
 
