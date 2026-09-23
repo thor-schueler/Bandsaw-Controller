@@ -592,25 +592,25 @@ void Motion::step(bool dir)
 void Motion::manual_feed_runner(void* args)
 {
     constexpr int32_t DEAD_BAND = 20;
-    constexpr uint32_t STOP_DELAY_MS = 100;
 
     bool running = false;
     bool direction = true;
 
     uint64_t last_us = esp_timer_get_time();
     float fractional_steps = 0.0f;
-    uint32_t near_zero_since = 0;
 
     Motion* _this = static_cast<Motion*>(args);
     Logger.Info(F("... Start manual feed runner task"));
     for(;;)
     {
         uint64_t now_us = esp_timer_get_time();
-
         float dt = static_cast<float>(now_us - last_us) / 1000000.0f;
         last_us = now_us;
+
         int32_t balance = _this->_step_balance.load();
-        bool desired_direction = (balance >= 0);
+        bool desired_direction = direction;
+        if(balance > DEAD_BAND) desired_direction = true;
+        if(balance < -DEAD_BAND) desired_direction = false;
 
         // 
         // Start motion
@@ -653,28 +653,25 @@ void Motion::manual_feed_runner(void* args)
                 if(direction) _this->_step_balance.fetch_sub(whole_steps);
                 else _this->_step_balance.fetch_add(whole_steps);
             }
-        }
-
-        //
-        // Stop hysteresis
-        //
-        balance = _this->_step_balance.load();
-        if(abs(balance) < DEAD_BAND)
-        {
-            if(near_zero_since == 0) near_zero_since = millis();
-            if(running && millis() - near_zero_since > STOP_DELAY_MS)
+            //
+            // Evaluate Stop hystereis
+            //
+            balance = _this->_step_balance.load();
+            if(abs(balance) < DEAD_BAND)
             {
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
                 digitalWrite(EN_PIN, HIGH);
+                _this->_step_balance.store(0);
+                fractional_steps = 0.0f;
                 running = false;
                 Logger.Info(F("... Manual feed runner motion stopped"));
             }
+            taskYIELD();
         }
         else
         {
-            near_zero_since = 0;
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
-        taskYIELD();
     }
 }
 
