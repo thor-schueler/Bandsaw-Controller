@@ -35,18 +35,32 @@
 #define POWER_RELAY_PIN 25
 
 // motion parameters
+#define MOTOR_CURRENT 2000
+#define MOTOR_MICROSTEPS 4
 #define MOTOR_STEPS_PER_REV 200.0f
-#define MICROSTEPS 4.0f
 #define LEADSCREW_LEAD_MM 4.0f
 #define GEAR_RATIO 20.0f / 80.0f
 #define MM_PER_INCH 25.4f
-#define FREQUENCY_INCREMENT 10
-#define FREQUENCY_MAX 4000
-#define FREQUENCY_MIN 50
-#define FREQUENCY_HOME_INC 50
-#define FREQUENCY_HOME_START 500
-#define FREQUENCY_HOME 1500
-#define FREQUENCY_BASE 1000
+
+#define FREQUENCY_MAX 1500 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_MIN 25 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_HOME_INC 25 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_HOME_MANUAL_INCREMENT 5 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_HOME_START FREQUENCY_MIN
+#define FREQUENCY_HOME 800 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_BASE 400 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+
+// wheel parameters
+#define STEPS_PER_CLICK 100
+#define PERIOD_OVERSHOOT_FACTOR 1.2f
+#define FREQUENCY_MANUAL_MIN 12 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_MANUAL_MAX 500 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define ACCELERATION_ALPHA 0.2f
+#define DECELERATION_ALPHA 0.6f
+#define STEP_DECAY_BUFFER_PERIODS 250
+#define STEP_DECAY_FACTOR 0.99f
+#define STEP_DECAY_FLOOR 200
+
 
 enum class BLADE_STATE : bool {
     STOPPED,
@@ -229,7 +243,7 @@ class Motion
          * 
          * @param args - pointer to task arguments 
          */
-        static void manual_pulse_runner(void * args);
+        static void manual_feed_runner(void* args);
 
         /**
          * @brief Task function monitoring the blade state to enable air and collant when on auto....
@@ -241,19 +255,15 @@ class Motion
 
     private:
 
-        /**
-         * @brief Creates a manual step pulse for the stepper. Used for manual operation
-         * 
-         * @param dir - direction to move the stepper in. True to step into the feed.
-         */
-        void step(bool dir);
-
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
-        std::atomic<int16_t> _queued_steps = 0;
-        std::atomic<uint16_t> _steps_taken = 0;
+        //std::atomic<int16_t> _queued_steps = 0;
+        std::atomic<uint16_t> _steps_taken{0};
+        std::atomic<int32_t> _step_balance{0};
+        std::atomic<uint16_t> _manual_frequency{800};
+
         std::atomic<int64_t> _time_stamp = esp_timer_get_time();
-        std::atomic<uint16_t> _frequency = 0;
+        std::atomic<uint16_t> _frequency{0};
         
         volatile bool _home_limit = false;
         volatile bool _feed_limit = false;

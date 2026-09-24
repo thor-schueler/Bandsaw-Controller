@@ -1,7 +1,7 @@
 {
     "port": "COM3",
     "board": "esp32:esp32:esp32",
-    "prebuild": "python3.exe ./increment_version.py",
+    "prebuild": "python.exe ./increment_version.py",
     "postbuild": " ",
     "output": "./build",
     "buildPreferences": [
