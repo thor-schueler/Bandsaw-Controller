@@ -540,49 +540,49 @@ void Motion::homing_runner(void * args)
  * 
  * @param dir - direction to move the stepper in. True to step into the feed.
  */
-void Motion::step(bool dir)
-{
-    //static uint64_t last_pulse = esp_timer_get_time();
-    static TimerHandle_t timer = NULL;
-    static Motion* _this = nullptr;
-
-    if(this->_state != MOTION_STATE::IDLE)  return;
-                    // when we are not in idle state, we should not do anything here as 
-                    // we are either autonomously feeding, homing, settings or in shutdown.
-
-                               
-    if(timer == NULL)
-    {
-        digitalWrite(EN_PIN, LOW);
-        //this->_frequency = 0;
-        _this = this;
-        timer = xTimerCreate("JogTimeout", pdMS_TO_TICKS(5000), pdFALSE, this,
-            [](TimerHandle_t t) 
-            {
-                if(_this->_state == MOTION_STATE::IDLE) digitalWrite(EN_PIN, HIGH); 
-                _this->_steps_taken = 0;
-                //_this->_frequency = 0;
-                timer = NULL; 
-                Logger.Info(F("... Stepper disabled due to idle timout."));
-            });
-    }
-    else
-    {
-        xTimerReset(timer, 0);
-        //uint32_t period = esp_timer_get_time() - last_pulse;
-        //float f = 1000000.0f / period;
-        //this->_frequency = (this->_frequency * 0.8f) + (f * 0.2f);
-    }
-    //last_pulse = esp_timer_get_time();
-
-    digitalWrite(DIR_PIN, dir);
-    digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(350);
-    digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(350);
-    this->_steps_taken++;
-    //Logger.Info_f(F("... Manual pulse %u"), this->_frequency);
-}
+//void Motion::step(bool dir)
+//{
+//    //static uint64_t last_pulse = esp_timer_get_time();
+//    static TimerHandle_t timer = NULL;
+//    static Motion* _this = nullptr;
+//
+//    if(this->_state != MOTION_STATE::IDLE)  return;
+//                    // when we are not in idle state, we should not do anything here as 
+//                    // we are either autonomously feeding, homing, settings or in shutdown.
+//
+//                               
+//    if(timer == NULL)
+//    {
+//        digitalWrite(EN_PIN, LOW);
+//        //this->_frequency = 0;
+//        _this = this;
+//        timer = xTimerCreate("JogTimeout", pdMS_TO_TICKS(5000), pdFALSE, this,
+//            [](TimerHandle_t t) 
+//            {
+//                if(_this->_state == MOTION_STATE::IDLE) digitalWrite(EN_PIN, HIGH); 
+//                _this->_steps_taken = 0;
+//                //_this->_frequency = 0;
+//                timer = NULL; 
+//                Logger.Info(F("... Stepper disabled due to idle timout."));
+//            });
+//    }
+//    else
+//    {
+//        xTimerReset(timer, 0);
+//        //uint32_t period = esp_timer_get_time() - last_pulse;
+//        //float f = 1000000.0f / period;
+//        //this->_frequency = (this->_frequency * 0.8f) + (f * 0.2f);
+//    }
+//    //last_pulse = esp_timer_get_time();
+//
+//    digitalWrite(DIR_PIN, dir);
+//    digitalWrite(STEP_PIN, HIGH);
+//    delayMicroseconds(350);
+//    digitalWrite(STEP_PIN, LOW);
+//    delayMicroseconds(350);
+//    this->_steps_taken++;
+//    //Logger.Info_f(F("... Manual pulse %u"), this->_frequency);
+//}
 
 /**
  * @brief Task function performing manual movement based on the wheel motion
@@ -652,6 +652,7 @@ void Motion::manual_feed_runner(void* args)
             {
                 if(direction) _this->_step_balance.fetch_sub(whole_steps);
                 else _this->_step_balance.fetch_add(whole_steps);
+                _this->_steps_taken.fetch_add(whole_steps);
             }
             //
             // Evaluate Stop hystereis
@@ -662,6 +663,7 @@ void Motion::manual_feed_runner(void* args)
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
                 digitalWrite(EN_PIN, HIGH);
                 _this->_step_balance.store(0);
+                _this->_steps_taken.store(0);
                 fractional_steps = 0.0f;
                 running = false;
                 Logger.Info(F("... Manual feed runner motion stopped"));
@@ -682,27 +684,27 @@ void Motion::manual_feed_runner(void* args)
  * 
  * @param args - pointer to task arguments 
  */
-void Motion::manual_pulse_runner(void * args)
-{
-    Motion* _this = static_cast<Motion*>(args);
-    Logger.Info(F("... Start manual pulse runner task"));
-    for(;;)
-    {
-        if(_this->_queued_steps > 0)
-        {
-            _this->step(true);
-            _this->_queued_steps --;
-        }
-        else if(_this->_queued_steps < 0)
-        {
-            _this->step(false);
-            _this->_queued_steps ++;
-        }
-        if(_this->_queued_steps == 0) taskYIELD();
-    }
-    _this->_pulse_task = NULL;
-    vTaskDelete(NULL);
-}
+//void Motion::manual_pulse_runner(void * args)
+//{
+//    Motion* _this = static_cast<Motion*>(args);
+//    Logger.Info(F("... Start manual pulse runner task"));
+//    for(;;)
+//    {
+//        if(_this->_queued_steps > 0)
+//        {
+//            _this->step(true);
+//            _this->_queued_steps --;
+//        }
+//        else if(_this->_queued_steps < 0)
+//        {
+//            _this->step(false);
+//            _this->_queued_steps ++;
+//        }
+//        if(_this->_queued_steps == 0) taskYIELD();
+//    }
+//    _this->_pulse_task = NULL;
+//    vTaskDelete(NULL);
+//}
 
 /**
  * @brief Gets the current feed rate.
@@ -729,8 +731,8 @@ float Motion::feed_rate_ipm()
     else
     {
         const uint32_t elapsed = esp_timer_get_time() - this->_time_stamp;
-        const float mm_per_sec = (this->_steps_taken * mm_per_microstep * 1000000.0f ) / elapsed;
-        if(elapsed > 5000000) this->_steps_taken = 0;
+        const float mm_per_sec = (this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
+        if(elapsed > 5000000) this->_steps_taken.store(0);
         return 60.0f * mm_per_sec / MM_PER_INCH;
     }
 }
@@ -742,6 +744,7 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
+    static uint32_t last_time = millis();
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
     if(this->_state == MOTION_STATE::SETTINGS) 
     {
@@ -766,8 +769,20 @@ void Motion::process_wheel_movement(int direction, int steps)
     {
         // when idle the wheel will manually feed the carriage in that case, we will 
         // need to generate pulses in sync with the wheel motion. 
-        if(this->_steps_taken == 0) this->_time_stamp = esp_timer_get_time();
-        this->_queued_steps += direction > 0  ? 10 :  -10;
-        this->_step_balance.fetch_add(direction > 0 ? 100 : -100);
+        if(this->_steps_taken.load() == 0) this->_time_stamp = esp_timer_get_time();
+        //this->_queued_steps += direction > 0  ? 10 :  -10;
+        this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
+        uint16_t period = millis() - last_time;
+        last_time = millis();
+        if(period > 250) period = 250;  // this generates a period for the ceiling of a floor for the speed
+                                        // of 400Hz, which at 4 microsteps is about 2mm/sec
+
+        uint16_t of = this->_manual_frequency.load();
+        this->_manual_frequency.store(constrain(STEPS_PER_CLICK *  1000 / period, FREQUENCY_MIN, FREQUENCY_MAX));
+        if(of != this->_manual_frequency.load())
+        {
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
+            Logger.Info_f(F("... Manual feed frequency changed to %u"), this->_manual_frequency.load());
+        }
     }
 }

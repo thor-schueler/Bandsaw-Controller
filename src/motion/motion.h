@@ -49,6 +49,9 @@
 #define FREQUENCY_HOME 800 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
 #define FREQUENCY_BASE 400 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
 
+// wheel parameters
+#define STEPS_PER_CLICK 100
+
 enum class BLADE_STATE : bool {
     STOPPED,
     RUNNING
@@ -230,7 +233,7 @@ class Motion
          * 
          * @param args - pointer to task arguments 
          */
-        static void manual_pulse_runner(void * args);
+        //static void manual_pulse_runner(void * args);
 
         /**
          * @brief Task function performing manual movement based on the wheel motion
@@ -254,18 +257,17 @@ class Motion
          * 
          * @param dir - direction to move the stepper in. True to step into the feed.
          */
-        void step(bool dir);
+        //void step(bool dir);
 
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
-        std::atomic<int16_t> _queued_steps = 0;
-        std::atomic<uint16_t> _steps_taken = 0;
-
+        //std::atomic<int16_t> _queued_steps = 0;
+        std::atomic<uint16_t> _steps_taken{0};
         std::atomic<int32_t> _step_balance{0};
         std::atomic<uint16_t> _manual_frequency{800};
 
         std::atomic<int64_t> _time_stamp = esp_timer_get_time();
-        std::atomic<uint16_t> _frequency = 0;
+        std::atomic<uint16_t> _frequency{0};
         
         volatile bool _home_limit = false;
         volatile bool _feed_limit = false;
