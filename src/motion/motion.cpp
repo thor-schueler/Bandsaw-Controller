@@ -757,13 +757,14 @@ void Motion::process_wheel_movement(int direction, int steps)
     {
         // when homing or feeding, the wheel will increase and decrease the 
         // homing speed....
-        uint16_t f = this->_frequency + direction * FREQUENCY_INCREMENT;
+        uint16_t f = this->_frequency.load() + direction * FREQUENCY_HOME_MANUAL_INCREMENT; 
+;
         if(f < FREQUENCY_MIN) f = FREQUENCY_MIN;
         if(f > FREQUENCY_MAX) f = FREQUENCY_MAX;
-        if(f != this->_frequency)
+        if(f != this->_frequency.load())
         {
-            this->_frequency = f;
-            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_frequency);
+            this->_frequency.store(f);
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, f);
             Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
         } 
     }
@@ -776,14 +777,20 @@ void Motion::process_wheel_movement(int direction, int steps)
         this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
         uint16_t period = millis() - last_time;
         last_time = millis();
-        if(period > 500) period = 500;  // this generates a period for the ceiling of a floor for the speed
-                                        // of 200Hz, which at 4 microsteps is about 1mm/sec
+        //if(period > 500) period = 500;  // this generates a period for the ceiling of a floor for the speed
+                                          // of 200Hz, which at 4 microsteps is about 1mm/sec
 
         uint16_t of = this->_manual_frequency.load();
-        uint16_t tf = STEPS_PER_CLICK *  1000 / period;
-        this->_manual_frequency.store(constrain(static_cast<uint32_t>((_manual_frequency.load() * 0.8f) + (tf * 0.2f)), FREQUENCY_MIN, FREQUENCY_MAX));
-        if(of != this->_manual_frequency.load())
+        uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
+                                        // give a 20% margin on the period to allow buildup of a step backlog to 
+                                        // prevent the motor shutting down and starting up too often.
+    
+        float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
+                                        // adjust alpha to accelerate slowly but decelerate more rapidely.                                 
+        tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
+        if(of != tf)
         {
+            this->_manual_frequency.store(tf);
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
             Logger.Info_f(F("... Manual feed frequency changed to %u"), this->_manual_frequency.load());
         }
