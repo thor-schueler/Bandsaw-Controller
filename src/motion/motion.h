@@ -240,13 +240,6 @@ class Motion
          * 
          * @param args - pointer to task arguments 
          */
-        //static void manual_pulse_runner(void * args);
-
-        /**
-         * @brief Task function performing manual movement based on the wheel motion
-         * 
-         * @param args - pointer to task arguments 
-         */
         static void manual_feed_runner(void* args);
 
         /**
@@ -258,13 +251,6 @@ class Motion
 
 
     private:
-
-        /**
-         * @brief Creates a manual step pulse for the stepper. Used for manual operation
-         * 
-         * @param dir - direction to move the stepper in. True to step into the feed.
-         */
-        //void step(bool dir);
 
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
