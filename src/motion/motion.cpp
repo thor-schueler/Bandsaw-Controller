@@ -597,6 +597,7 @@ void Motion::manual_feed_runner(void* args)
     bool direction = true;
 
     uint64_t last_us = esp_timer_get_time();
+    uint32_t last_stopped = 0;
     float fractional_steps = 0.0f;
 
     Motion* _this = static_cast<Motion*>(args);
@@ -663,15 +664,16 @@ void Motion::manual_feed_runner(void* args)
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
                 digitalWrite(EN_PIN, HIGH);
                 _this->_step_balance.store(0);
-                _this->_steps_taken.store(0);
                 fractional_steps = 0.0f;
                 running = false;
+                last_stopped = millis();
                 Logger.Info(F("... Manual feed runner motion stopped"));
             }
             taskYIELD();
         }
         else
         {
+            if((last_stopped !=0) && (millis() - last_stopped > 5000)) _this->_steps_taken.store(0);  
             vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
@@ -744,7 +746,7 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
-    static uint32_t last_time = millis();
+    static uint32_t last_time = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
     if(this->_state == MOTION_STATE::SETTINGS) 
     {
@@ -774,11 +776,12 @@ void Motion::process_wheel_movement(int direction, int steps)
         this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
         uint16_t period = millis() - last_time;
         last_time = millis();
-        if(period > 250) period = 250;  // this generates a period for the ceiling of a floor for the speed
-                                        // of 400Hz, which at 4 microsteps is about 2mm/sec
+        if(period > 500) period = 500;  // this generates a period for the ceiling of a floor for the speed
+                                        // of 200Hz, which at 4 microsteps is about 1mm/sec
 
         uint16_t of = this->_manual_frequency.load();
-        this->_manual_frequency.store(constrain(STEPS_PER_CLICK *  1000 / period, FREQUENCY_MIN, FREQUENCY_MAX));
+        uint16_t tf = STEPS_PER_CLICK *  1000 / period;
+        this->_manual_frequency.store(constrain(static_cast<uint32_t>((_manual_frequency.load() * 0.8f) + (tf * 0.2f)), FREQUENCY_MIN, FREQUENCY_MAX));
         if(of != this->_manual_frequency.load())
         {
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
