@@ -60,8 +60,8 @@ void Motion::begin()
     Logger.Info(F("...   Configure end stop limit switches."));
     pinMode(LIMIT_1_PIN, INPUT);
     pinMode(LIMIT_2_PIN, INPUT);
-    attachInterruptArg(LIMIT_1_PIN, limit_isr, this, FALLING);  
-    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, FALLING); 
+    attachInterruptArg(LIMIT_1_PIN, limit_isr, this, CHANGE);  
+    attachInterruptArg(LIMIT_2_PIN, limit_isr, this, CHANGE); 
 
     // Stepper pins
     Logger.Info(F("...   Configure stepper pins GPIO."));
@@ -95,7 +95,7 @@ void Motion::begin()
 
     // Task Registration
     Logger.Info(F("...   Starting Manual Pulse Runner Task."));
-    xTaskCreatePinnedToCore(manual_pulse_runner, "manualPulseRunner", 2048, this, 1, &_pulse_task, 1);
+    xTaskCreatePinnedToCore(manual_feed_runner, "manualFeedRunner", 2048, this, 1, &_pulse_task, 1);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
@@ -103,19 +103,19 @@ void Motion::begin()
     this->_tmc_driver->begin();
     this->_tmc_driver->toff(4);
     this->_tmc_driver->blank_time(24);
-    this->_tmc_driver->rms_current(2000);       // Maximum Stepper current
-    this->_tmc_driver->microsteps(4);           // Initial Microstep configuration. 
-    this->_tmc_driver->pwm_autoscale(true);     // Enable StealthChop
+    this->_tmc_driver->rms_current(MOTOR_CURRENT);      // Maximum Stepper current
+    this->_tmc_driver->microsteps(MOTOR_MICROSTEPS);    // Microsteps per step
+    this->_tmc_driver->intpol(true);
 
     //
     // StallGuard configuration
     //
-    this->_tmc_driver->en_spreadCycle(true);    // StallGuard ONLY works in SpreadCycle
-    this->_tmc_driver->pwm_autoscale(false);    // Disable StealthChop
-    this->_tmc_driver->TCOOLTHRS(0xFFFFF);      // Allow SG to operate at all speeds
-    this->_tmc_driver->SGTHRS(50);              // StallGuard threshold (tune this)
-    this->_tmc_driver->irun(31);
-    this->_tmc_driver->ihold(31);
+    this->_tmc_driver->en_spreadCycle(false);           // StallGuard ONLY works in SpreadCycle
+    this->_tmc_driver->pwm_autoscale(true);             // Enable Stealthchop
+    this->_tmc_driver->TCOOLTHRS(0);                    // Stallguard disabled at this time
+    this->_tmc_driver->SGTHRS(0);                       // Stallguard disabled at this time
+    this->_tmc_driver->irun(31);                        // Running current ratio, 31 = 100%
+    this->_tmc_driver->ihold(31);                       // Holding current ratio, 31 = 100%
 
     Logger.Info(F("...   TMC2209 initialized with StallGuard."));
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
@@ -153,17 +153,16 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     Motion *_this = reinterpret_cast<Motion *>(arg);  
     bool hl = false;
     bool fl = false;
-
     bool dir = digitalRead(DIR_PIN);
-    for(int i=0; i<10; i++)
-    {
-        hl |= digitalRead(LIMIT_1_PIN);
-        fl |= digitalRead(LIMIT_2_PIN);
-        delayMicroseconds(1);
-    }
+    //for(int i=0; i<10; i++)
+    //{
+    //    hl |= digitalRead(LIMIT_1_PIN);
+    //    fl |= digitalRead(LIMIT_2_PIN);
+    //    delayMicroseconds(1);
+    //}
 
-    //_this->_home_limit = !digitalRead(LIMIT_1_PIN);                              // active low
-    //_this->_feed_limit = !digitalRead(LIMIT_2_PIN);                              // active low
+    hl = digitalRead(LIMIT_1_PIN);                              // active low
+    fl = digitalRead(LIMIT_2_PIN);                              // active low
     //if((_this->_home_limit &&  !digitalRead(DIR_PIN)) || (_this->_feed_limit) && digitalRead(DIR_PIN)) 
     if((!hl && !dir) || (!fl && dir))
     {
@@ -171,6 +170,11 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
         if(!fl && dir) _this->_feed_limit = true;
         digitalWrite(EN_PIN, HIGH);  // disable Stepper
     }
+    if(hl) _this->_home_limit = false;
+    if(fl) _this->_feed_limit = false;
+    if(!hl && !dir) _this->_home_limit = true;
+    if(!fl && dir) _this->_feed_limit = true;
+    if(_this->_home_limit || _this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
 }
 
 /**
@@ -464,7 +468,7 @@ void Motion::homing_runner(void * args)
 
     Logger.Info(F("... Starting homing task"));
     _this->_state = MOTION_STATE::HOMING;
-    _this->_frequency = FREQUENCY_HOME_START; // FREQUENCY_HOME
+    _this->_frequency = FREQUENCY_HOME_START;
 
     esp_err_t r = ledc_channel_config(&_channel_config);
     if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
@@ -481,7 +485,7 @@ void Motion::homing_runner(void * args)
         if(_this->_frequency < FREQUENCY_HOME && !startup_complete) 
         {
             _this->_frequency += FREQUENCY_HOME_INC;
-            if(_this->_frequency > FREQUENCY_HOME) 
+            if(_this->_frequency >= FREQUENCY_HOME) 
             {
                 _this->_frequency = FREQUENCY_HOME;
                 startup_complete = true;
@@ -532,79 +536,114 @@ void Motion::homing_runner(void * args)
 }
 
 /**
- * @brief Creates a manual step pulse for the stepper. Used for manual operation
- * 
- * @param dir - direction to move the stepper in. True to step into the feed.
- */
-void Motion::step(bool dir)
-{
-    //static uint64_t last_pulse = esp_timer_get_time();
-    static TimerHandle_t timer = NULL;
-    static Motion* _this = nullptr;
-
-    if(this->_state != MOTION_STATE::IDLE)  return;
-                    // when we are not in idle state, we should not do anything here as 
-                    // we are either autonomously feeding, homing, settings or in shutdown.
-
-                               
-    if(timer == NULL)
-    {
-        digitalWrite(EN_PIN, LOW);
-        //this->_frequency = 0;
-        _this = this;
-        timer = xTimerCreate("JogTimeout", pdMS_TO_TICKS(5000), pdFALSE, this,
-            [](TimerHandle_t t) 
-            {
-                if(_this->_state == MOTION_STATE::IDLE) digitalWrite(EN_PIN, HIGH); 
-                _this->_steps_taken = 0;
-                //_this->_frequency = 0;
-                timer = NULL; 
-                Logger.Info(F("... Stepper disabled due to idle timout."));
-            });
-    }
-    else
-    {
-        xTimerReset(timer, 0);
-        //uint32_t period = esp_timer_get_time() - last_pulse;
-        //float f = 1000000.0f / period;
-        //this->_frequency = (this->_frequency * 0.8f) + (f * 0.2f);
-    }
-    //last_pulse = esp_timer_get_time();
-
-    digitalWrite(DIR_PIN, dir);
-    digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(250);
-    digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(250);
-    this->_steps_taken++;
-    //Logger.Info_f(F("... Manual pulse %u"), this->_frequency);
-}
-
-/**
  * @brief Task function performing manual movement based on the wheel motion
  * 
  * @param args - pointer to task arguments 
  */
-void Motion::manual_pulse_runner(void * args)
+void Motion::manual_feed_runner(void* args)
 {
+    constexpr int32_t DEAD_BAND = 20;
+    int32_t balance = 0;
+    uint8_t idle_counter = 0;
+    bool running = false;
+    bool direction = true;
+
+    uint64_t last_us = esp_timer_get_time();
+    uint32_t last_stopped = 0;
+    float fractional_steps = 0.0f;
+
     Motion* _this = static_cast<Motion*>(args);
-    Logger.Info(F("... Start manual pulse runner task"));
+    Logger.Info(F("... Start manual feed runner task"));
     for(;;)
     {
-        if(_this->_queued_steps > 0)
+        uint64_t now_us = esp_timer_get_time();
+        float dt = static_cast<float>(now_us - last_us) / 1000000.0f;
+        last_us = now_us;
+
+        if(balance != _this->_step_balance.load() || !running || abs(balance) < STEP_DECAY_FLOOR)
         {
-            _this->step(true);
-            _this->_queued_steps --;
+            balance = _this->_step_balance.load(); 
+            idle_counter = 0;
         }
-        else if(_this->_queued_steps < 0)
+        else
         {
-            _this->step(false);
-            _this->_queued_steps ++;
+            // no new steps have come in since the last 5 iteration. That means operator might have stopped 
+            // spinning the wheel so we want to decay the remaining steps
+            if(idle_counter++ > STEP_DECAY_BUFFER_PERIODS)
+            {
+                balance = static_cast<int32_t>(static_cast<float>(balance) * STEP_DECAY_FACTOR);
+                _this->_step_balance.store(balance);
+            }  
         }
-        if(_this->_queued_steps == 0) taskYIELD();
+        bool desired_direction = direction;
+        if(balance > DEAD_BAND) desired_direction = true;
+        if(balance < -DEAD_BAND) desired_direction = false;
+
+        // 
+        // Start motion
+        //
+        if(!running && abs(balance) > DEAD_BAND)
+        {
+            digitalWrite(DIR_PIN, desired_direction);
+            direction = desired_direction;
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_manual_frequency.load());
+            ledc_channel_config(&_channel_config);
+            digitalWrite(EN_PIN, LOW);
+            running = true;
+            fractional_steps = 0.0f;
+            Logger.Info(F("... Manual feed runner motion started"));
+        }
+
+        //
+        // Direction change
+        //
+        if(running && desired_direction != direction && abs(balance) > DEAD_BAND)
+        {
+            ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+            digitalWrite(DIR_PIN, desired_direction);
+            direction = desired_direction;
+            ledc_channel_config(&_channel_config);
+            fractional_steps = 0.0f;
+            Logger.Info(F("... Manual feed runner direction changed"));
+        }
+
+        //
+        // Account for emitted steps
+        //
+        if(running)
+        {
+            float emitted = static_cast<float>(_this->_manual_frequency.load()) * dt + fractional_steps;
+            int32_t whole_steps = static_cast<int32_t>(emitted);
+            fractional_steps = emitted - static_cast<float>(whole_steps);
+            if(whole_steps > 0)
+            {
+                if(direction) _this->_step_balance.fetch_sub(whole_steps);
+                else _this->_step_balance.fetch_add(whole_steps);
+                _this->_steps_taken.fetch_add(whole_steps);
+            }
+            //
+            // Evaluate Stop hystereis
+            //
+            balance = _this->_step_balance.load();
+            if(abs(balance) < DEAD_BAND)
+            {
+                ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+                digitalWrite(EN_PIN, HIGH);
+                _this->_step_balance.store(0);
+                balance = 0;
+                fractional_steps = 0.0f;
+                running = false;
+                last_stopped = millis();
+                Logger.Info(F("... Manual feed runner motion stopped"));
+            }
+            taskYIELD();
+        }
+        else
+        {
+            if((last_stopped !=0) && (millis() - last_stopped > 5000)) _this->_steps_taken.store(0);  
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
     }
-    _this->_pulse_task = NULL;
-    vTaskDelete(NULL);
 }
 
 /**
@@ -620,7 +659,7 @@ void Motion::manual_pulse_runner(void * args)
  */
 float Motion::feed_rate_ipm()
 {
-    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * MICROSTEPS;
+    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS);
     const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
     const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
 
@@ -632,8 +671,8 @@ float Motion::feed_rate_ipm()
     else
     {
         const uint32_t elapsed = esp_timer_get_time() - this->_time_stamp;
-        const float mm_per_sec = (this->_steps_taken * mm_per_microstep * 1000000.0f ) / elapsed;
-        if(elapsed > 5000000) this->_steps_taken = 0;
+        const float mm_per_sec = (this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
+        if(elapsed > 5000000) this->_steps_taken.store(0);
         return 60.0f * mm_per_sec / MM_PER_INCH;
     }
 }
@@ -645,31 +684,72 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
+    static uint32_t last_time = 0;
+    static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
+
     if(this->_state == MOTION_STATE::SETTINGS) 
     {
         // TODO - whatever we need to do during settings management. 
         Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
     }
+
     if(this->_state == MOTION_STATE::HOMING || this->_state == MOTION_STATE::FEEDING)
     {
         // when homing or feeding, the wheel will increase and decrease the 
         // homing speed....
-        uint16_t f = this->_frequency + direction * FREQUENCY_INCREMENT;
+        uint16_t f = this->_frequency.load() + direction * FREQUENCY_HOME_MANUAL_INCREMENT; 
         if(f < FREQUENCY_MIN) f = FREQUENCY_MIN;
         if(f > FREQUENCY_MAX) f = FREQUENCY_MAX;
-        if(f != this->_frequency)
+        if(f != this->_frequency.load())
         {
-            this->_frequency = f;
-            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_frequency);
+            this->_frequency.store(f);
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, f);
             Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
         } 
     }
+    
     if(this->_state == MOTION_STATE::IDLE)
     {
         // when idle the wheel will manually feed the carriage in that case, we will 
-        // need to generate pulses in sync with the wheel motion. 
-        if(this->_steps_taken == 0) this->_time_stamp = esp_timer_get_time();
-        this->_queued_steps += direction > 0  ? 10 :  -10;
+        // need to manaully derive frequency, manage queued steps, etc.  
+        uint16_t period = millis() - last_time;
+        last_time = millis();
+
+        if(this->_steps_taken.load() == 0) this->_time_stamp = esp_timer_get_time();
+                                        // reset the effective speed timer when there are no more steps to be taken
+                                        // when we continuoulsy move into one direction, we simply build up a step balance
+                                        // however, when the oeprator moves the wheel the other direction, we do not want the
+                                        // original motion to continue, so we use the first click to cancel the move into the 
+                                        // original direction.
+        if(previous_direction != 0 && previous_direction != direction && this->_step_balance.load() != 0)
+        {
+            this->_step_balance.store(0);
+            this->_manual_frequency.store(FREQUENCY_MANUAL_MIN);
+        }
+        else
+        {
+            this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
+        
+            uint16_t of = this->_manual_frequency.load();
+            uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
+                                        // give a 20% margin on the period to allow buildup of a step backlog to 
+                                        // prevent the motor shutting down and starting up too often.
+            
+    
+            float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
+                                        // adjust alpha to accelerate slowly but decelerate more rapidely.                                 
+        
+            if(period > 2000) alpha = 1.0f;
+            tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
+            if(of != tf)
+            {
+                this->_manual_frequency.store(tf);
+                ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
+                Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+            }
+        }
     }
+
+    previous_direction = direction;
 }
