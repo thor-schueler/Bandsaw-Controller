@@ -560,7 +560,7 @@ void Motion::manual_feed_runner(void* args)
         float dt = static_cast<float>(now_us - last_us) / 1000000.0f;
         last_us = now_us;
 
-        if(balance != _this->_step_balance.load()) 
+        if(balance != _this->_step_balance.load() || !running || abs(balance) < STEP_DECAY_FLOOR)
         {
             balance = _this->_step_balance.load(); 
             idle_counter = 0;
@@ -569,9 +569,9 @@ void Motion::manual_feed_runner(void* args)
         {
             // no new steps have come in since the last 5 iteration. That means operator might have stopped 
             // spinning the wheel so we want to decay the remaining steps
-            if(idle_counter++ > 5)
+            if(idle_counter++ > STEP_DECAY_BUFFER_PERIODS)
             {
-                balance = balance *0.9;
+                balance = static_cast<int32_t>(static_cast<float>(balance) * STEP_DECAY_FACTOR);
                 _this->_step_balance.store(balance);
             }  
         }
@@ -699,7 +699,6 @@ void Motion::process_wheel_movement(int direction, int steps)
         // when homing or feeding, the wheel will increase and decrease the 
         // homing speed....
         uint16_t f = this->_frequency.load() + direction * FREQUENCY_HOME_MANUAL_INCREMENT; 
-;
         if(f < FREQUENCY_MIN) f = FREQUENCY_MIN;
         if(f > FREQUENCY_MAX) f = FREQUENCY_MAX;
         if(f != this->_frequency.load())
@@ -723,25 +722,32 @@ void Motion::process_wheel_movement(int direction, int steps)
                                         // however, when the oeprator moves the wheel the other direction, we do not want the
                                         // original motion to continue, so we use the first click to cancel the move into the 
                                         // original direction.
-        if(previous_direction != 0 && previous_direction != direction && this->_step_balance.load() != 0) this->_step_balance.store(0);
+        if(previous_direction != 0 && previous_direction != direction && this->_step_balance.load() != 0)
+        {
+            this->_step_balance.store(0);
+            this->_manual_frequency.store(FREQUENCY_MANUAL_MIN);
+        }
         else
         {
             this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
-        }
-
-        uint16_t of = this->_manual_frequency.load();
-        uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
+        
+            uint16_t of = this->_manual_frequency.load();
+            uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
                                         // give a 20% margin on the period to allow buildup of a step backlog to 
                                         // prevent the motor shutting down and starting up too often.
+            
     
-        float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
+            float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
                                         // adjust alpha to accelerate slowly but decelerate more rapidely.                                 
-        tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
-        if(of != tf)
-        {
-            this->_manual_frequency.store(tf);
-            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
-            Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+        
+            if(period > 2000) alpha = 1.0f;
+            tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
+            if(of != tf)
+            {
+                this->_manual_frequency.store(tf);
+                ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
+                Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+            }
         }
     }
 
