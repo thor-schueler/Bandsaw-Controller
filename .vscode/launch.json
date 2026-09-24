@@ -1,0 +1,16 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "esp-debug",
+            "request": "launch",
+            "name": "ESP Program",
+            "program": "build\\Bandsaw Controller.ino.elf",
+            "port": "COM3",
+            "gdbPath": "C:\\Users\\thort\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\xtensa-esp-elf-gdb\\16.3_20250913\\bin\\xtensa-esp32-elf-gdb.exe"
+        }
+    ]
+}

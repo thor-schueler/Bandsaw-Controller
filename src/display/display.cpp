@@ -160,6 +160,12 @@ void Display::draw_canvas()
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
+        
+        LGFX_Sprite s = LGFX_Sprite(this);
+        s.createSprite(HOMING_W, HOMING_H);
+        s.setColorDepth(16);
+        this->draw_manual_feed_plot(&s);
+        s.pushSprite(88, 95);
         xSemaphoreGive(this->_display_mutex);
     }    
 }
@@ -540,6 +546,11 @@ void Display::homeing_animation_runner(void* args)
     }
 
     Logger.Info(F("... Homing animation complete."));
+    if(_this->_homingSprite != nullptr) 
+    {
+        delete _this->_homingSprite;
+        _this->_homingSprite = nullptr;
+    }
     _this->_homing_animation_break = false;
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
@@ -663,56 +674,6 @@ void Display::draw_homing_scanner(uint8_t frame)
     _homingSprite->drawFastVLine(x - 1, 0, HOMING_H, 0x43FF);
     _homingSprite->drawFastVLine(x, 0, HOMING_H, LCARS_CYAN);
 }
-
-/*
-void Display::draw_homing_scanner(uint8_t frame)
-{
-    constexpr uint16_t beam[] =
-    {
-        0x0841, 0x1062, 0x1082, 0x18A3, 0x18C3, 0x2104, 0x2945, 0x3186, 0x39C7, 0x4208, 0x52AA, 0x63AE, 0x7513, 0x86B9, 0xA7DF,
-        0xFFFF, 0xA7DF, 0x86B9, 0x7513, 0x63AE, 0x52AA, 0x4208, 0x39C7, 0x3186, 0x2945, 0x2104, 0x18C3, 0x18A3, 0x1082, 0x1062, 0x0841
-    };
-
-    uint8_t sweepFrame = frame % 20;
-    int x = (sweepFrame * (HOMING_W - 4))  / 19;
-
-    constexpr int halfWidth = 15;
-    for(int i = -halfWidth; i <= halfWidth; i++)
-    {
-        int drawX = x + i;
-        if(drawX < 0 || drawX >= HOMING_W) continue;
-        _homingSprite->drawFastVLine(drawX, 0, HOMING_H, beam[i + halfWidth]);
-    }
-
-    //
-    // Hot center line
-    //
-    _homingSprite->drawFastVLine(x, 0, HOMING_H, TFT_WHITE);
-}
-*/
-
-/*
-void Display::draw_homing_scanner(uint8_t frame)
-{
-    uint8_t sweepFrame = frame % 20;
-    int centerX = (sweepFrame * (HOMING_W - 4)) / 19;
-
-    // Symmetric horizontal intensity profile
-    constexpr uint16_t beam[] =
-    {
-        0x1082, 0x18C3, 0x2104, 0x2945, 0x3186, 0x39C7, 0x4208, 0x52AA, 0x63AE, 0x7513, 0x86B9, 0xA7DF, 0xD7FF, 0xEFFF, 0xFFFF, 0xEFFF, 0xD7FF,
-        0xA7DF, 0x86B9, 0x7513, 0x63AE, 0x52AA, 0x4208, 0x39C7, 0x3186, 0x2945, 0x2104, 0x18C3, 0x1082
-    };
-
-    constexpr int halfWidth = sizeof(beam) / sizeof(beam[0]) / 2;
-    for(int i=-halfWidth; i<=halfWidth; i++)
-    {
-        int x = centerX + i;
-        if(x < 0 || x >= HOMING_W) continue;
-        _homingSprite->drawFastVLine(x, 0, HOMING_H, beam[i + halfWidth]);
-    }
-}
-*/
 
 /**
  * @brief Draws the moving carriage that is being homed.

@@ -338,6 +338,11 @@ public:
     void draw_homing_status(uint8_t frame);
     #pragma endregion
 
+    #pragma region homing animation methods
+    void update_manual_feed_plot();
+    void draw_manual_feed_plot(LGFX_Sprite* sprite);
+
+    #pragma endregion
 
     LGFX_Sprite* _homingSprite = nullptr;
     volatile bool _paused = false;
