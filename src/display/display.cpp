@@ -160,12 +160,6 @@ void Display::draw_canvas()
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
-        
-        LGFX_Sprite s = LGFX_Sprite(this);
-        s.createSprite(HOMING_W, HOMING_H);
-        s.setColorDepth(16);
-        this->draw_manual_feed_plot(&s);
-        s.pushSprite(88, 95);
         xSemaphoreGive(this->_display_mutex);
     }    
 }
@@ -250,60 +244,51 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 }
 
 /**
- * @brief Manages the EMS overlay.
+ * @brief Set the workarea title 
  * 
- * @param active - true to activate the EMS overlay, false to deactivate it. 
+ * @param title_image - A pointer to an image for the title. Could be an icon or a font bitmap
+ * @param title_image_size - The number of elements in the image.
+ * @param title - Title string to use
+ * @remark The title (if present) is written after the image (if present)
  */
-void Display::ems_overlay(bool active)
+void Display::set_workarea_title(const uint16_t* title_image, size_t title_image_size, String title)
 {
-    if(active)
+    LGFX_Sprite title_sprite(this);
+    title_sprite.setColorDepth(16);
+    title_sprite.createSprite(260, 20);
+    title_sprite.fillSprite(TFT_BLACK);
+
+    if(title_image != nullptr) title_sprite.pushImage(0, 0, title_image_size/20, 20, (lgfx::rgb565_t*)title_image);
+    if(!title.isEmpty())
     {
-        if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-        {         
-            this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
-            xSemaphoreGive(this->_display_mutex);
-        } 
+        title_sprite.setTextColor(LCARS_CYAN, TFT_BLACK);
+        title_sprite.setFont(&fonts::Font2);
+        title_sprite.drawString(title.c_str(), 0, 0);
     }
-    else
-    {
-        this->draw_canvas();
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {     
+        title_sprite.pushSprite(87, 59);
+        xSemaphoreGive(this->_display_mutex);
     }
 }
 
 /**
- * @brief Write the speeds and feeds overlay into the display
+ * @brief Process the touch interrupt and call the callback if set
  * 
- * @param active - true to activate the EMS overlay, false to deactivate it.
- * @param speed - the initial speed (expected in IPM) 
- * @param monitor - true to continuously monitor and update the speed
- * @param monitor - true to continuously monitor and update the speed
- * @param get_speed - fucntion to call to obtain speed when monitoring.
+ * @remark This method is really to determine whether the touch is relevant and 
+ * what downstream action needs to be invoked. For this to work, each screen must
+ * register certain areas on the screen and the associated command that should be invoked. 
+ * The _callback function will be called with the relevant command to invoke if it is set. 
+ * 
  */
-void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, std::function<float()> get_speed)
-{
-    if(active)
+void IRAM_ATTR Display::processTouchInterrupt()
+{ 
+    BaseType_t xHigherPriorityTaskToken = pdFALSE;
+    if(this->_touchRunner != NULL)
     {
-        if(!monitor) this->fas_overlay(active, speed);
-        else
-        {
-            if(_fas_runner != NULL) Logger.Info(F("... Feeds and Speeds Monitoring task already exists. Skipping..."));
-            else
-            {
-                Logger.Info(F("... Creating Feeds and Speeds Monitoring task."));
-                this->_fas_break = false;
-                FAS_TaskArgs* args = new FAS_TaskArgs { this, std::move(get_speed) };
-                xTaskCreatePinnedToCore(fas_runner, "Feeds and Speeds Watcher", 4096, args, 1, &_fas_runner, 1);
-            }
-        }
-    }
-    else
-    {
-        if(_fas_runner == NULL) this->fas_overlay(active, speed);   // no fas runner, so treat this as a one time invocation
-        else
-        {
-            Logger.Info(F("... Sending termination request to Feeds and Speeds Monitoring task."));
-            this->_fas_break = true;
-        }
+        gpio_intr_disable((gpio_num_t)TOUCH_IRQ_PIN);
+        vTaskNotifyGiveFromISR(this->_touchRunner, &xHigherPriorityTaskToken); 
+        portYIELD_FROM_ISR(xHigherPriorityTaskToken);
     }
 }
 
@@ -341,118 +326,6 @@ void Display::fas_runner(void* args)
     _this->_fas_break = false;
     delete _args;
     vTaskDelete(NULL);
-}
-
-/**
- * @brief Intenral method to Write the speeds and feeds overlay into the display
- * 
- * @param active - true to activate the EMS overlay, false to deactivate it.
- * @param speed - the speed (expected in IPM) 
- */
-void Display::fas_overlay(bool active, float speed)
-{
-    LGFX_Sprite overlay(this);
-    overlay.setColorDepth(16);
-    overlay.createSprite(127, 143);
-    overlay.fillSprite(TFT_BLACK);
-    if(active) 
-    {
-        char buf[16];
-        uint8_t xx = 0;
-        uint8_t x = FEED_X_OFFSET;
-        snprintf(buf, sizeof(buf), speed < 10 ? "%.2f" : "%.1f", speed);
-        overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
-        overlay.setTextColor(LCARS_ORANGE, TFT_BLACK);
-        overlay.fillRect(6, 31, 104, 50, TFT_BLACK);
-
-        for(char* p = buf; *p; ++p)
-        {
-            lgfx::rgb565_t* img = nullptr;
-            switch(*p)
-            {
-                case '0': img = (lgfx::rgb565_t*)D0; xx = D_WIDTH; break;
-                case '1': img = (lgfx::rgb565_t*)D1; xx = D_WIDTH; break;
-                case '2': img = (lgfx::rgb565_t*)D2; xx = D_WIDTH; break;
-                case '3': img = (lgfx::rgb565_t*)D3; xx = D_WIDTH; break;
-                case '4': img = (lgfx::rgb565_t*)D4; xx = D_WIDTH; break;
-                case '5': img = (lgfx::rgb565_t*)D5; xx = D_WIDTH; break;
-                case '6': img = (lgfx::rgb565_t*)D6; xx = D_WIDTH; break;
-                case '7': img = (lgfx::rgb565_t*)D7; xx = D_WIDTH; break;
-                case '8': img = (lgfx::rgb565_t*)D8; xx = D_WIDTH; break;
-                case '9': img = (lgfx::rgb565_t*)D9; xx = D_WIDTH; break;
-                case '.': img = (lgfx::rgb565_t*)DDot; xx = DDOT_WIDTH; break;
-            }
-            if(img == nullptr) continue;
-            overlay.pushImage(x, FEED_Y_OFFSET, xx, D_HEIGHT, img, TFT_BLACK);
-            x += xx - 2;
-        }
-        overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
-    }
-    else
-    {
-        overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds_inactive);
-    }
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    { 
-        overlay.pushSprite(353, 58);
-        xSemaphoreGive(this->_display_mutex);
-    }
-}
-
-/**
- * @brief manage the action overlay
- * 
- * @param active - true to activate the action overlay, false to deactivate it. 
- * @param image - A pointer to an image for the overlay. Could be an icon or a font bitmap
- * @param image_size - The number of elements in the image.
- * @param title - Title string to use
- */
-void Display::actions_overlay(bool active, const uint16_t* image, size_t image_size, String title)
-{
-    LGFX_Sprite overlay(this);
-    overlay.setColorDepth(16);
-    overlay.createSprite(127, 70);
-    overlay.fillSprite(TFT_BLACK);
-    if(active) 
-    {
-        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)action);
-        if(image != nullptr) overlay.pushImage(0, 0, image_size/70, 70, (lgfx::rgb565_t*)image, TFT_BLACK);
-        if(!title.isEmpty()) 
-        {
-            overlay.setTextColor(TFT_WHITE);
-            overlay.setFont(&fonts::FreeSans9pt7b);
-            overlay.drawCenterString(title, 60, 26);
-        } 
-    }
-    else
-    {
-        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)action_inactive);
-    }
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    { 
-        overlay.pushSprite(353, 201);
-        xSemaphoreGive(this->_display_mutex);
-    }
-}
-
-/**
- * @brief Process the touch interrupt and call the callback if set
- * 
- * @remark This method is really to determine whether the touch is relevant and 
- * what downstream action needs to be invoked. For this to work, each screen must
- * register certain areas on the screen and the associated command that should be invoked. 
- * The _callback function will be called with the relevant command to invoke if it is set. 
- * 
- */
-void IRAM_ATTR Display::processTouchInterrupt()
-{ 
-    BaseType_t xHigherPriorityTaskToken = pdFALSE;
-    if(this->_touchRunner != NULL)
-    {
-        gpio_intr_disable((gpio_num_t)TOUCH_IRQ_PIN);
-        vTaskNotifyGiveFromISR(this->_touchRunner, &xHigherPriorityTaskToken); 
-        portYIELD_FROM_ISR(xHigherPriorityTaskToken);
-    }
 }
 
 /**
@@ -523,15 +396,19 @@ void Display::touch_runner(void* args)
  */
 void Display::homeing_animation_runner(void* args)
 {
+    LGFX_Sprite *_sprite = nullptr;
     Display *_this = reinterpret_cast<Display *>(args);
     Logger.Info(F("... Homing animation started."));
+    _sprite = new LGFX_Sprite(_this);
+    _sprite->createSprite(HOMING_W, HOMING_H);
+    _sprite->setColorDepth(16);
     _this->actions_overlay(true, homing, homing_size, "");
     _this->_homing_animation_break = false;
     for(;;)
     {
         for(uint8_t frame = 0; frame < 60; frame++)
         { 
-            _this->draw_homing_frame(frame);
+            _this->draw_homing_frame(_sprite, frame);
             vTaskDelay(pdMS_TO_TICKS(50));
             if(_this->_paused || _this->_homing_animation_break) break;
         }
@@ -539,189 +416,56 @@ void Display::homeing_animation_runner(void* args)
     }
     if(!_this->_paused)
     {
-        _this->draw_homing_frame(255);
+        _this->draw_homing_frame(_sprite, 255);
         _this->actions_overlay(false, nullptr, 0, "");
         _this->set_workarea_title(nullptr, 0, "");
         _this->set_button_tab(EXT_GPIO_HOME_PIN, TOUCH_TAB_STATE::OFF);
     }
 
     Logger.Info(F("... Homing animation complete."));
-    if(_this->_homingSprite != nullptr) 
-    {
-        delete _this->_homingSprite;
-        _this->_homingSprite = nullptr;
-    }
+    if(_sprite != nullptr) delete _sprite;
     _this->_homing_animation_break = false;
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
 }
 
 /**
- * @brief Set the workarea title 
- * 
- * @param title_image - A pointer to an image for the title. Could be an icon or a font bitmap
- * @param title_image_size - The number of elements in the image.
- * @param title - Title string to use
- * @remark The title (if present) is written after the image (if present)
- */
-void Display::set_workarea_title(const uint16_t* title_image, size_t title_image_size, String title)
+ * @brief Task function runnign the feed animation
+ * @param args - pointer to task arguments
+ */ 
+void Display::feed_animation_runner(void* args)
 {
-    LGFX_Sprite title_sprite(this);
-    title_sprite.setColorDepth(16);
-    title_sprite.createSprite(260, 20);
-    title_sprite.fillSprite(TFT_BLACK);
-
-    if(title_image != nullptr) title_sprite.pushImage(0, 0, title_image_size/20, 20, (lgfx::rgb565_t*)title_image);
-    if(!title.isEmpty())
+    LGFX_Sprite *_sprite = nullptr;
+    Feed_TaskArgs *_args = reinterpret_cast<Feed_TaskArgs *>(args);
+    Display *_this = _args->self;
+    Logger.Info(F("... Feed animation started."));
+    _sprite = new LGFX_Sprite(_this);
+    _sprite->createSprite(HOMING_W, HOMING_H);
+    _sprite->setColorDepth(16);
+    _this->set_workarea_title(nullptr, 0, F("Manual Feeding Mode"));
+    _this->_feed_animation_break = false;
+    for(;;)
     {
-        title_sprite.setTextColor(LCARS_CYAN, TFT_BLACK);
-        title_sprite.setFont(&fonts::Font2);
-        title_sprite.drawString(title.c_str(), 0, 0);
+        _this->update_manual_feed_data(_args->speed_function);
+        _this->draw_manual_feed_plot(_sprite);
+        if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        {     
+            _sprite->pushSprite(88, 95);
+            xSemaphoreGive(_this->_display_mutex);
+        }
+        if(_this->_paused || _this->_feed_animation_break) break;
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    {     
-        title_sprite.pushSprite(87, 59);
-        xSemaphoreGive(this->_display_mutex);
-    }
-}
-
-
-#pragma region Homing animation methods
-/**
- * @brief Starts the homing animation. Once started, the animation will run until terminated when the value 
- * of the terminate reference goes true
- * 
- * @param terminate - reference to a variable for flow control. Going true will terminate the animation. 
- */
-void Display::start_homing_animation()
-{
-    if(this->_homing_animation != NULL) return;           // animation taskis already running.
-    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 1);
-}
-
-/**
- * @brief Draws a frame for the homing animation displayed during the homing cycle
- * 
- * @param frame - the frame index to draw.
- */
-void Display::draw_homing_frame(uint8_t frame)
-{
-    if(this->_homingSprite == nullptr)
+    if(!_this->_paused)
     {
-        this->_homingSprite = new LGFX_Sprite(this);
-        this->_homingSprite->createSprite(HOMING_W, HOMING_H);
-        this->_homingSprite->setColorDepth(16);
+        _this->draw_homing_frame(_sprite, 255);
+        _this->set_workarea_title(nullptr, 0, "");
     }
-    this->_homingSprite->fillSprite(frame == 255 ? TFT_BLACK : LCARS_GRAY);
 
-    if(frame < 255)
-    {
-        frame %= 60;
-        draw_homing_background();
-        draw_homing_scanner(frame);
-        draw_homing_carriage(frame);
-        draw_homing_reticle(frame);
-        draw_homing_status(frame);
-    }
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    {  
-        this->_homingSprite->pushSprite(88, 95);
-        xSemaphoreGive(this->_display_mutex);
-    }
+    Logger.Info(F("... Feed animation complete."));
+    if(_sprite != nullptr) delete _sprite;
+    _this->reset_feed_data(); 
+    _this->_feed_animation_break = false;
+    _this->_feed_animation = NULL;
+    vTaskDelete(NULL);
 }
-
-/**
- * @brief Draws the background of a homing frame
- * 
- */
-void Display::draw_homing_background()
-{
-    //
-    // Grid
-    //
-    for(int x = 0; x < HOMING_W; x += 17) _homingSprite->drawFastVLine(x, 0, HOMING_H, LCARS_GRID);
-    for(int y = 0; y < HOMING_H; y += 17) _homingSprite->drawFastHLine(0, y, HOMING_W, LCARS_GRID);
-
-    //
-    // Feed axis rail
-    //
-    _homingSprite->drawFastHLine(20, HOMING_H/2, HOMING_W - 40, LCARS_BLUE);
-
-    //
-    // Home indicator
-    //
-    _homingSprite->fillTriangle(5, HOMING_H/2, 15, HOMING_H/2 - 10, 15, HOMING_H/2 + 10, LCARS_ORANGE);
-
-    //
-    // Pulsing beacon ring
-    //
-    _homingSprite->drawCircle(18, HOMING_H/2, 6, LCARS_ORANGE);
-    _homingSprite->setTextColor(LCARS_ORANGE, LCARS_GRAY);
-    _homingSprite->drawString("REFERENCE ACQUISITION", 10, 5);
-}
-
-/**
- * @brief Draws the scanning line of the homing animation
- * 
- * @param frame - the frame index of the animation sequence
- */
-void Display::draw_homing_scanner(uint8_t frame)
-{
-    uint8_t sweepFrame = frame % 20;
-    int x = (sweepFrame * (HOMING_W - 4)) / 19;
-
-    _homingSprite->drawFastVLine(x - 2, 0, HOMING_H, 0x2C7F);
-    _homingSprite->drawFastVLine(x - 1, 0, HOMING_H, 0x43FF);
-    _homingSprite->drawFastVLine(x, 0, HOMING_H, LCARS_CYAN);
-}
-
-/**
- * @brief Draws the moving carriage that is being homed.
- * 
- * @param frame - the frame index of the animation sequence
- */
-void Display::draw_homing_carriage(uint8_t frame)
-{
-    int x = 225 - ((220 * frame) / 59);
-    _homingSprite->fillRoundRect(x, HOMING_H/2 - 14, 24, 28, 3, LCARS_CYAN);
-    _homingSprite->fillCircle(x + 26, HOMING_H/2 - 5, 2, LCARS_ORANGE);
-    _homingSprite->fillCircle(x + 26, HOMING_H/2 + 5, 2, LCARS_ORANGE);
-}
-
-/**
- * @brief Draws the homing reticle
- * 
- * @param frame - the frame index of the animation sequence
- */
-void Display::draw_homing_reticle(uint8_t frame)
-{
-    if(frame < 20) return;
-
-    int radius = 8 + ((frame - 20) / 2);
-    if(radius > 24) radius = 24;
-
-    constexpr int cx = 18; //152;
-    constexpr int cy = HOMING_H / 2; //86;
-
-    _homingSprite->drawCircle(cx, cy, radius, LCARS_ORANGE);
-    _homingSprite->drawFastHLine(cx - radius - 6, cy, 5, LCARS_ORANGE);
-    _homingSprite->drawFastHLine(cx + radius + 1, cy, 5, LCARS_ORANGE);
-    _homingSprite->drawFastVLine(cx, cy - radius - 6, 5, LCARS_ORANGE);
-    _homingSprite->drawFastVLine(cx, cy + radius + 1, 5, LCARS_ORANGE);
-}
-
-/**
- * @brief Draws the homing status message into the frame
- * 
- * @param frame - the frame index of the animation sequence
- */
-void Display::draw_homing_status(uint8_t frame)
-{
-    if(frame < 20 || (frame > 30 && frame < 40) || (frame > 50 && frame < 60))
-    {
-        _homingSprite->setTextColor(LCARS_CYAN, LCARS_GRAY);
-        _homingSprite->drawString("SEEKING HOME", 10, 155);
-    }
-}
-#pragma endregion
-

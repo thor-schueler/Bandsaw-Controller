@@ -63,6 +63,7 @@ void Controller::begin()
         // only build canvas if EMS is not active
         this->_display->draw_canvas();
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 
     this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
@@ -262,6 +263,7 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
         this->_display->resume_tasks();
         this->_inputs->resume_monitoring();
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 }
 
@@ -280,6 +282,7 @@ void Controller::home(uint8_t gpio, const char* command)
     this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
     if(this->_motion->get_state() == MOTION_STATE::IDLE)
     {
+        this->_display->feeding_complete();
         this->_display->set_workarea_title(homing_title, homing_title_size, "");
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
         this->_display->start_homing_animation();
@@ -289,6 +292,8 @@ void Controller::home(uint8_t gpio, const char* command)
     {
         this->_display->set_workarea_title(nullptr, 0, "");
         this->_motion->home(nullptr);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 }    
 
