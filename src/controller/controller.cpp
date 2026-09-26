@@ -283,6 +283,7 @@ void Controller::home(uint8_t gpio, const char* command)
     if(this->_motion->get_state() == MOTION_STATE::IDLE)
     {
         this->_display->feeding_complete();
+        vTaskDelay(pdMS_TO_TICKS(200));
         this->_display->set_workarea_title(homing_title, homing_title_size, "");
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
         this->_display->start_homing_animation();
@@ -292,7 +293,7 @@ void Controller::home(uint8_t gpio, const char* command)
     {
         this->_display->set_workarea_title(nullptr, 0, "");
         this->_motion->home(nullptr);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(200));
         this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 }    

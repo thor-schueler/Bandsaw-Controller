@@ -640,7 +640,7 @@ void Motion::manual_feed_runner(void* args)
         }
         else
         {
-            if((last_stopped !=0) && (millis() - last_stopped > 5000)) _this->_steps_taken.store(0);  
+            if((last_stopped !=0) && (millis() - last_stopped > WHEEL_PAUSE_LATENCY)) _this->_steps_taken.store(0);  
             vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
@@ -670,9 +670,9 @@ float Motion::feed_rate_ipm()
     }
     else
     {
-        const uint32_t elapsed = esp_timer_get_time() - this->_time_stamp;
+        const uint64_t elapsed = esp_timer_get_time() - this->_time_stamp;
         const float mm_per_sec = (this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
-        if(elapsed > 5000000) this->_steps_taken.store(0);
+        if(millis() - this->_last_wheel_click > WHEEL_PAUSE_LATENCY) this->_steps_taken.store(0);
         return 60.0f * mm_per_sec / MM_PER_INCH;
     }
 }
@@ -684,7 +684,6 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
-    static uint32_t last_time = 0;
     static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
 
@@ -713,11 +712,11 @@ void Motion::process_wheel_movement(int direction, int steps)
     {
         // when idle the wheel will manually feed the carriage in that case, we will 
         // need to manaully derive frequency, manage queued steps, etc.  
-        uint16_t period = millis() - last_time;
-        last_time = millis();
-
+        uint16_t period = millis() - this->_last_wheel_click;
+                                        // reset accumulated steps if no wheel ticks have come in for some time.
         if(this->_steps_taken.load() == 0) this->_time_stamp = esp_timer_get_time();
                                         // reset the effective speed timer when there are no more steps to be taken
+                                        //
                                         // when we continuoulsy move into one direction, we simply build up a step balance
                                         // however, when the oeprator moves the wheel the other direction, we do not want the
                                         // original motion to continue, so we use the first click to cancel the move into the 
@@ -750,6 +749,6 @@ void Motion::process_wheel_movement(int direction, int steps)
             }
         }
     }
-
+    this->_last_wheel_click = millis();
     previous_direction = direction;
 }

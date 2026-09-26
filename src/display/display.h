@@ -71,6 +71,7 @@ extern const uint16_t action[] PROGMEM;
 extern const uint16_t action_inactive[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
+extern const uint16_t manual_feeding_title[] PROGMEM;
 extern const uint16_t D0[] PROGMEM;
 extern const uint16_t D1[] PROGMEM;
 extern const uint16_t D2[] PROGMEM;
@@ -85,6 +86,7 @@ extern const uint16_t DDot[] PROGMEM;
 extern const uint16_t DIPM[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
+extern const size_t manual_feeding_title_size;
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -116,6 +118,7 @@ typedef enum TOUCH_TAB_STATE{
 
 static constexpr int HOMING_W = 255;
 static constexpr int HOMING_H = 170;
+static constexpr int POLAR_PLOT_OFFSET = 90;
 
 static constexpr uint16_t BORG_GREEN   = 0x3666;
 static constexpr uint16_t LCARS_POLAR  = 0x4228;
@@ -393,11 +396,11 @@ public:
     void reset_feed_data();    
     #pragma endregion
 
-    //LGFX_Sprite* _homingSprite = nullptr;
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;
     volatile bool _feed_animation_break = false;
     volatile bool _fas_break = false;
+    volatile bool _use_manual_feed_smoothing = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;

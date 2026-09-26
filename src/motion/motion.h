@@ -60,6 +60,7 @@
 #define STEP_DECAY_BUFFER_PERIODS 250
 #define STEP_DECAY_FACTOR 0.99f
 #define STEP_DECAY_FLOOR 200
+#define WHEEL_PAUSE_LATENCY 5000
 
 
 enum class BLADE_STATE : bool {
@@ -257,7 +258,6 @@ class Motion
 
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
-        //std::atomic<int16_t> _queued_steps = 0;
         std::atomic<uint16_t> _steps_taken{0};
         std::atomic<int32_t> _step_balance{0};
         std::atomic<uint16_t> _manual_frequency{800};
@@ -270,7 +270,8 @@ class Motion
         volatile bool _job_should_exit = false;
         volatile bool _blade_job_should_exit = false;
         volatile bool _stall_alert = false;
-        
+        volatile uint32_t _last_wheel_click = 0;
+
         volatile motion_state_t _state = MOTION_STATE::IDLE;
         volatile ems_state_t _ems_state = EMS_STATE::RUNNING;
         volatile air_state_t _air_state = AIR_STATE::OFF;
