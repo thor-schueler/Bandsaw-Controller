@@ -28,9 +28,16 @@ Motion::Motion()
  */
 Motion::~Motion()
 {
-    if(this->_pulse_task != NULL) vTaskDelete(this->_pulse_task);
     this->_job_should_exit = true;
-    this->_pulse_task = NULL;
+    vTaskDelay(pdMS_TO_TICKS(250));
+    if(this->_manual_feed_task != NULL) vTaskDelete(this->_manual_feed_task);
+    if(this->_manual_speed_task != NULL) vTaskDelete(this->_manual_speed_task);
+    if(this->_homing_task != NULL) vTaskDelete(this->_homing_task);
+    if(this->_blade_task != NULL) vTaskDelete(this->_blade_task);
+    this->_manual_feed_task = NULL;
+    this->_manual_speed_task = NULL;
+    this->_blade_task = NULL;
+    this->_homing_task = NULL;
 
     delete this->_tmc_driver;
     this->_tmc_serial->end();
@@ -95,7 +102,7 @@ void Motion::begin()
 
     // Task Registration
     Logger.Info(F("...   Starting Manual Pulse Runner Task."));
-    xTaskCreatePinnedToCore(manual_feed_runner, "manualFeedRunner", 2048, this, 1, &_pulse_task, 1);
+    xTaskCreatePinnedToCore(manual_feed_runner, "manualFeedRunner", 2048, this, 1, &_manual_feed_task, 1);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
@@ -154,16 +161,9 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     bool hl = false;
     bool fl = false;
     bool dir = digitalRead(DIR_PIN);
-    //for(int i=0; i<10; i++)
-    //{
-    //    hl |= digitalRead(LIMIT_1_PIN);
-    //    fl |= digitalRead(LIMIT_2_PIN);
-    //    delayMicroseconds(1);
-    //}
 
     hl = digitalRead(LIMIT_1_PIN);                              // active low
     fl = digitalRead(LIMIT_2_PIN);                              // active low
-    //if((_this->_home_limit &&  !digitalRead(DIR_PIN)) || (_this->_feed_limit) && digitalRead(DIR_PIN)) 
     if((!hl && !dir) || (!fl && dir))
     {
         if(!hl && !dir) _this->_home_limit = true;
@@ -584,6 +584,7 @@ void Motion::manual_feed_runner(void* args)
         //
         if(!running && abs(balance) > DEAD_BAND)
         {
+            if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task == NULL) xTaskCreate(manual_speed_monitor, "Manual Speed Monitoring Task", 2048, _this, 1, &_this->_manual_speed_task);
             digitalWrite(DIR_PIN, desired_direction);
             direction = desired_direction;
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_manual_frequency.load());
@@ -627,8 +628,14 @@ void Motion::manual_feed_runner(void* args)
             balance = _this->_step_balance.load();
             if(abs(balance) < DEAD_BAND)
             {
+                uint8_t c = 0;
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
                 digitalWrite(EN_PIN, HIGH);
+                if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task != NULL)
+                {
+                    _this->_speed_monitor_should_exit = true;
+                    while(_this->_manual_speed_task != NULL && (c++ < 254)) vTaskDelay(pdMS_TO_TICKS(10));
+                }
                 _this->_step_balance.store(0);
                 balance = 0;
                 fractional_steps = 0.0f;
@@ -640,7 +647,7 @@ void Motion::manual_feed_runner(void* args)
         }
         else
         {
-            if((last_stopped !=0) && (millis() - last_stopped > 5000)) _this->_steps_taken.store(0);  
+            if((last_stopped !=0) && (millis() - last_stopped > WHEEL_PAUSE_LATENCY)) _this->_steps_taken.store(0);  
             vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
@@ -670,12 +677,52 @@ float Motion::feed_rate_ipm()
     }
     else
     {
-        const uint32_t elapsed = esp_timer_get_time() - this->_time_stamp;
-        const float mm_per_sec = (this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
-        if(elapsed > 5000000) this->_steps_taken.store(0);
-        return 60.0f * mm_per_sec / MM_PER_INCH;
+        if(this->_manual_speed_task != NULL) return this->_manual_speed;
+        else
+        {
+            const uint64_t elapsed = esp_timer_get_time() - this->_time_stamp;
+            const float mm_per_sec = (this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
+            if(millis() - this->_last_wheel_click > WHEEL_PAUSE_LATENCY) this->_steps_taken.store(0);
+            return 60.0f * mm_per_sec / MM_PER_INCH;
+        }
     }
 }
+
+
+/** 
+ * @brief Monitors the feed speed in manual feeding mode.
+ * 
+ * @param args = task arguments
+ */
+void Motion::manual_speed_monitor(void *args)
+{
+    Motion* _this = static_cast<Motion*>(args);
+    Logger.Info(F("... Start manual feed speed monitoring task"));
+    const float microsteps_per_rev = MOTOR_STEPS_PER_REV * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS);
+    const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
+    const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
+    for(;;)
+    {
+        if(_this->_speed_monitor_should_exit) break;
+
+        const uint64_t elapsed = esp_timer_get_time() - _this->_time_stamp;
+        if(elapsed == 0) continue;
+
+        const float mm_per_sec = (_this->_steps_taken.load() * mm_per_microstep * 1000000.0f ) / elapsed;
+        float speed = 60.0f * mm_per_sec / MM_PER_INCH;
+        if(true) speed = (_this->_manual_speed * 0.80f) + (speed * 0.20f);
+        _this->_steps_taken.store(0);
+        _this->_time_stamp = esp_timer_get_time();
+        _this->_manual_speed = speed;
+
+        vTaskDelay(pdMS_TO_TICKS(MANUAL_SPEED_MONITORING_PERIOD));
+    }
+    Logger.Info(F("... Manual feed speed monitoring stopped"));
+    _this->_speed_monitor_should_exit = false;
+    _this->_manual_speed_task = NULL;
+    vTaskDelete(NULL);
+}
+
 
 /**
  * @brief Processes wheel movement events and takes the appropriate actions depending on hte motion state.
@@ -684,7 +731,6 @@ float Motion::feed_rate_ipm()
  */
 void Motion::process_wheel_movement(int direction, int steps) 
 { 
-    static uint32_t last_time = 0;
     static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
 
@@ -713,11 +759,11 @@ void Motion::process_wheel_movement(int direction, int steps)
     {
         // when idle the wheel will manually feed the carriage in that case, we will 
         // need to manaully derive frequency, manage queued steps, etc.  
-        uint16_t period = millis() - last_time;
-        last_time = millis();
-
+        uint16_t period = millis() - this->_last_wheel_click;
+                                        // reset accumulated steps if no wheel ticks have come in for some time.
         if(this->_steps_taken.load() == 0) this->_time_stamp = esp_timer_get_time();
                                         // reset the effective speed timer when there are no more steps to be taken
+                                        //
                                         // when we continuoulsy move into one direction, we simply build up a step balance
                                         // however, when the oeprator moves the wheel the other direction, we do not want the
                                         // original motion to continue, so we use the first click to cancel the move into the 
@@ -729,27 +775,30 @@ void Motion::process_wheel_movement(int direction, int steps)
         }
         else
         {
-            this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
-        
-            uint16_t of = this->_manual_frequency.load();
-            uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
-                                        // give a 20% margin on the period to allow buildup of a step backlog to 
-                                        // prevent the motor shutting down and starting up too often.
-            
-    
-            float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
-                                        // adjust alpha to accelerate slowly but decelerate more rapidely.                                 
-        
-            if(period > 2000) alpha = 1.0f;
-            tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
-            if(of != tf)
+            if(period > 0)
             {
-                this->_manual_frequency.store(tf);
-                ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
-                Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+                this->_step_balance.fetch_add(direction > 0 ? STEPS_PER_CLICK : -STEPS_PER_CLICK);
+            
+                uint16_t of = this->_manual_frequency.load();
+                uint16_t tf = STEPS_PER_CLICK *  1000 / static_cast<uint16_t>((static_cast<float>(period) * PERIOD_OVERSHOOT_FACTOR));
+                                            // give a 20% margin on the period to allow buildup of a step backlog to 
+                                            // prevent the motor shutting down and starting up too often.
+                
+        
+                float alpha = tf > of ? ACCELERATION_ALPHA : DECELERATION_ALPHA;
+                                            // adjust alpha to accelerate slowly but decelerate more rapidely.                                 
+            
+                if(period > 2000) alpha = 1.0f;
+                tf = constrain(static_cast<uint32_t>((_manual_frequency.load() * (1.0f - alpha)) + (tf * alpha)), FREQUENCY_MANUAL_MIN, FREQUENCY_MANUAL_MAX);
+                if(of != tf)
+                {
+                    this->_manual_frequency.store(tf);
+                    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
+                    Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+                }
             }
         }
     }
-
+    this->_last_wheel_click = millis();
     previous_direction = direction;
 }

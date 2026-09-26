@@ -71,6 +71,7 @@ extern const uint16_t action[] PROGMEM;
 extern const uint16_t action_inactive[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
+extern const uint16_t manual_feeding_title[] PROGMEM;
 extern const uint16_t D0[] PROGMEM;
 extern const uint16_t D1[] PROGMEM;
 extern const uint16_t D2[] PROGMEM;
@@ -85,6 +86,7 @@ extern const uint16_t DDot[] PROGMEM;
 extern const uint16_t DIPM[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
+extern const size_t manual_feeding_title_size;
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -116,7 +118,10 @@ typedef enum TOUCH_TAB_STATE{
 
 static constexpr int HOMING_W = 255;
 static constexpr int HOMING_H = 170;
+static constexpr int POLAR_PLOT_OFFSET = 90;
 
+static constexpr uint16_t BORG_GREEN   = 0x3666;
+static constexpr uint16_t LCARS_POLAR  = 0x4228;
 static constexpr uint16_t LCARS_GRID   = 0x2945;
 static constexpr uint16_t LCARS_BLUE   = 0x0418;
 static constexpr uint16_t LCARS_CYAN   = 0x75FF;
@@ -227,6 +232,14 @@ public:
     void start_homing_animation();
 
     /**
+     * @brief Starts the feeding animation. Once started, the animation will run until terminated by calling 
+     * Display::feeding_complete()
+     * 
+     * @param get_speed - fucntion to call to obtain speed when monitoring.
+     */
+    void start_feed_animation(std::function<float()> get_speed=NULL);
+
+    /**
      * @brief Pauses task processing. This will result in touch no longer being processed and 
      * running animations being stopped. New animations will not start. 
      * 
@@ -240,21 +253,19 @@ public:
      */
     inline void resume_tasks() { this->_paused = false; }; 
 
-
     /**
      * @brief should be called when the homing is complete to terminate the homing animation.
      * 
      */
-    void homing_complete() { if(this->_homing_animation != NULL) this->_homing_animation_break = true; };
-
-  protected:
+    inline void homing_complete() { if(this->_homing_animation != NULL) this->_homing_animation_break = true; };
 
     /**
-     * @brief Draws a frame for the homing animation displayed during the homing cycle
+     * @brief should be called when the feeding is complete to terminate the feeding animation.
      * 
-     * @param frame - the frame index to draw.
-     */  
-    void draw_homing_frame(uint8_t frame);
+     */
+    inline void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
+
+  protected:
 
     /**
      * @brief Task function managing the display
@@ -273,6 +284,12 @@ public:
      * @param args - pointer to task arguments
      */
     static void fas_runner(void* args);
+
+    /**
+     * @brief Task function runnign the feed animation
+     * @param args - pointer to task arguments
+     */    
+    static void feed_animation_runner(void* args);
 
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
@@ -299,58 +316,95 @@ public:
      */
     void fas_overlay(bool active, float speed);
 
+    /**
+     * @brief Draws the grid on hte background
+     * 
+     * @param sprite - Sprite to draw into
+     * 
+     */
+    void draw_grid(LGFX_Sprite *sprite);
+
     #pragma region homing animation methods
     /**
      * @brief Draws the background of a homing frame
      * 
+     * @param sprite - Sprite to draw into
+     * 
      */
-    void draw_homing_background();
+    void draw_homing_background(LGFX_Sprite *sprite);
+
+    /**
+     * @brief Draws a frame for the homing animation displayed during the homing cycle
+     * 
+     * @param sprite - Sprite to draw into
+     * @param frame - the frame index to draw.
+     */  
+    void draw_homing_frame(LGFX_Sprite *sprite, uint8_t frame);
 
     /**
      * @brief Draws the scanning line of the homing animation
      * 
+     * @param sprite - Sprite to draw into
      * @param frame - the frame index of the animation sequence
      */
-    void draw_homing_scanner(uint8_t frame);
-    
-
-    void draw_homing_targets(uint8_t frame);
+    void draw_homing_scanner(LGFX_Sprite *sprite, uint8_t frame);
     
     /**
      * @brief Draws the moving carriage that is being homed.
      * 
+     * @param sprite - Sprite to draw into
      * @param frame - the frame index of the animation sequence
      */
-    void draw_homing_carriage(uint8_t frame);
+    void draw_homing_carriage(LGFX_Sprite *sprite, uint8_t frame);
     
     /**
      * @brief Draws the homing reticle
      * 
+     * @param sprite - Sprite to draw into
      * @param frame - the frame index of the animation sequence
      */
-    void draw_homing_reticle(uint8_t frame);
+    void draw_homing_reticle(LGFX_Sprite *sprite, uint8_t frame);
     
     /**
      * @brief Draws the homing status into the frame
      * 
+     * @param sprite - Sprite to draw into
      * @param frame - the frame index of the animation sequence
      */
-    void draw_homing_status(uint8_t frame);
+    void draw_homing_status(LGFX_Sprite *sprite, uint8_t frame);
     #pragma endregion
 
     #pragma region homing animation methods
-    void update_manual_feed_plot();
+    /**
+     * @brief updates the feed plot data
+     * 
+     * @param get_speed - fucntion to call to obtain speed when monitoring.
+     */
+    void update_manual_feed_data(std::function<float()> get_speed);
+
+    /**
+     * @brief Draws the feed plot frame. 
+     * 
+     * @param sprite - Sprite to draw inot
+     */
     void draw_manual_feed_plot(LGFX_Sprite* sprite);
 
+    /**
+     * @brief Resets the feed plot data. 
+     * 
+     */
+    void reset_feed_data();    
     #pragma endregion
 
-    LGFX_Sprite* _homingSprite = nullptr;
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;
+    volatile bool _feed_animation_break = false;
     volatile bool _fas_break = false;
+    volatile bool _use_manual_feed_smoothing = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
+    TaskHandle_t _feed_animation = NULL;
     volatile SemaphoreHandle_t _display_mutex;
 };
 
@@ -359,5 +413,6 @@ struct FAS_TaskArgs
     Display* self;
     std::function<float()> speed_function;
 };
+using Feed_TaskArgs = FAS_TaskArgs;
 
 #endif //_DISPLAY_H_

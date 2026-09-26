@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "Arduino - Static",
-            "compilerPath": "C:/Users/HTXIn/AppData/Local/Arduino15/packages/esp32/tools/esp-x32/2601/bin/xtensa-esp32-elf-g++",
+            "compilerPath": "${env:USERPROFILE}/AppData/Local/Arduino15/packages/esp32/tools/esp-x32/2601/bin/xtensa-esp32-elf-g++",
             "compilerArgs": [
                 "-MMD",
                 "-w",

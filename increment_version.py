@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
-
 import re
 from pathlib import Path
 
-VERSION_H = Path("version.h")
+VERSION_CPP = Path("version.cpp")
 
-text = VERSION_H.read_text()
+text = VERSION_CPP.read_text()
 
 match = re.search(
-    r'(#define\s+FW_BUILD_NUMBER\s+)(\d+)',
+    r'(const\s+uint32_t\s+FW_BUILD_NUMBER\s*=\s*)(\d+)',
     text
 )
 
@@ -19,12 +17,12 @@ current = int(match.group(2))
 new = current + 1
 
 updated = re.sub(
-    r'(#define\s+FW_BUILD_NUMBER\s+)\d+',
+    r'(const\s+uint32_t\s+FW_BUILD_NUMBER\s*=\s*)\d+',
     rf'\g<1>{new}',
     text,
     count=1
 )
 
-VERSION_H.write_text(updated)
+VERSION_CPP.write_text(updated)
 
 print(f"FW_BUILD_NUMBER: {current} -> {new}")
