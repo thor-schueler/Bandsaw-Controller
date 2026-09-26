@@ -305,7 +305,7 @@ void Display::fas_runner(void* args)
     for(;;)
     {
         vTaskDelay(pdMS_TO_TICKS(50));
-        if(_this->_paused) continue;
+        if(_this->_paused) { speed = -1; continue; }
         if(_this->_fas_break)
         {
             Logger.Info(F("... Feeds and Speeds Monitoring task received termination request"));

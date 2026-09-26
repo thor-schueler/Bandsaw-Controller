@@ -59,7 +59,7 @@ void Display::update_manual_feed_data(std::function<float()> get_speed)
     float speed = (get_speed == nullptr) ? 0 : get_speed();
 
     // Smooth display response
-    if(this->_use_manual_feed_smoothing) _feedDisplaySpeed = (_feedDisplaySpeed * 0.90f) + (speed * 0.10f);
+    if(this->_use_manual_feed_smoothing) _feedDisplaySpeed = (_feedDisplaySpeed * 0.80f) + (speed * 0.20f);
     else _feedDisplaySpeed = speed;
 
     _feedHistory[_feedHistoryIndex] = _feedDisplaySpeed;
