@@ -130,8 +130,9 @@ void Display::fas_overlay(bool active, float speed)
  * @param image - A pointer to an image for the overlay. Could be an icon or a font bitmap
  * @param image_size - The number of elements in the image.
  * @param title - Title string to use
+ * @param bg - A pointer to the background image for the overlay. When nullptr, the default background will be used.
  */
-void Display::actions_overlay(bool active, const uint16_t* image, size_t image_size, String title)
+void Display::actions_overlay(bool active, const uint16_t* image, size_t image_size, String title, const uint16_t* bg)
 {
     LGFX_Sprite overlay(this);
     overlay.setColorDepth(16);
@@ -139,7 +140,7 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
     overlay.fillSprite(TFT_BLACK);
     if(active) 
     {
-        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)action);
+        overlay.pushImage(0, 0, 127, 70, (lgfx::rgb565_t*)(bg == nullptr ? action : bg));
         if(image != nullptr) overlay.pushImage(0, 0, image_size/70, 70, (lgfx::rgb565_t*)image, TFT_BLACK);
         if(!title.isEmpty()) 
         {

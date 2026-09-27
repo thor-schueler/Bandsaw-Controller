@@ -60,6 +60,16 @@ class Controller
         void toggle_saw_blade(uint8_t gpio, const char* command);
 
         /**
+         * @brief Workflow to toggle the feed carriage on or off. Will intrisically toggle the blade on or off as appropriate. 
+         * 
+         * @param gpio - GPIO for the engage toggle.
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the function signature is a delegate for the input watcher
+         */         
+        void toggle_feed(uint8_t gpio, const char* command);
+
+        /**
          * @brief Workflow to manage air blast. 
          * 
          * @param gpio - GPIO for the start/stop toggle.

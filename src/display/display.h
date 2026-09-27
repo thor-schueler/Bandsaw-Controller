@@ -51,6 +51,7 @@
 #define FEED_X_OFFSET 18
 #define FEED_Y_OFFSET 42
 
+#pragma region asset pointers
 extern const uint16_t background[] PROGMEM;
 extern const uint16_t ems[] PROGMEM;
 extern const uint16_t active_button[] PROGMEM;
@@ -69,9 +70,11 @@ extern const uint16_t speeds_and_feeds[] PROGMEM;
 extern const uint16_t speeds_and_feeds_inactive[] PROGMEM;
 extern const uint16_t action[] PROGMEM;
 extern const uint16_t action_inactive[] PROGMEM;
+extern const uint16_t action_green[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
 extern const uint16_t manual_feeding_title[] PROGMEM;
+extern const uint16_t blade_on[] PROGMEM;
 extern const uint16_t D0[] PROGMEM;
 extern const uint16_t D1[] PROGMEM;
 extern const uint16_t D2[] PROGMEM;
@@ -87,6 +90,8 @@ extern const uint16_t DIPM[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 extern const size_t manual_feeding_title_size;
+extern const size_t blade_on_size; 
+#pragma endregion
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -221,8 +226,9 @@ public:
      * @param image - A pointer to an image for the overlay. Could be an icon or a font bitmap
      * @param image_size - The number of elements in the image.
      * @param title - Title string to use
+     * @param bg - A pointer to the background image for the overlay. When nullptr, the default background will be used.
      */
-    void actions_overlay(bool active, const uint16_t* title_image, size_t title_image_size, String title);  
+    void actions_overlay(bool active, const uint16_t* title_image, size_t title_image_size, String title = "", const uint16_t* bg = nullptr);  
 
     /**
      * @brief Starts the homing animation. Once started, the animation will run until terminated by calling 
