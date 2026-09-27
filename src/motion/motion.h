@@ -191,6 +191,13 @@ class Motion
         void home(std::function<void()> complete);
 
         /**
+         * @brief Starts the cutting and feeding sequence
+         * 
+         * @param complete - function to call when the homing is complete.
+         */
+        void feed(std::function<void()> complete);
+
+        /**
          * @brief Gets the current state of the motion object
          * 
          * @return motion_state_t - a state enum class.
@@ -239,6 +246,13 @@ class Motion
          * @param args - pointer to task arguments 
          */
         static void homing_runner(void * args);
+
+        /**
+         * @brief Task function performing the cutting with automatic feed
+         * 
+         * @param args - pointer to task arguments 
+         */
+        static void cutting_runner(void * args);
 
         /**
          * @brief Task function performing manual movement based on the wheel motion
@@ -291,6 +305,7 @@ class Motion
         TaskHandle_t _manual_feed_task = NULL;
         TaskHandle_t _manual_speed_task = NULL;
         TaskHandle_t _blade_task = NULL;
+        TaskHandle_t _cutting_task = NULL;
 };
 
 struct TaskArgs

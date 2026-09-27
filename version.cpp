@@ -7,5 +7,5 @@
  */
 #include "version.h"
 
-const uint32_t FW_BUILD_NUMBER = 531;
+const uint32_t FW_BUILD_NUMBER = 542;
 

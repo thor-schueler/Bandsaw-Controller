@@ -126,13 +126,40 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
 
+    if(this->_motion->get_state() == MOTION_STATE::HOMING)
+    {
+        ///
+        /// TODO: - add alert
+        ///
+        Logger.Info(F("... Cannot engage blade during homing operation. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_state() == MOTION_STATE::FEEDING)
+    {
+        if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
+        {
+            ///
+            /// TODO - add alert
+            ///
+            Logger.Info(F("... Attempting to start blade during cutting/feeding. That should not happen, but still, it is allowed...."));
+        }
+        else
+        {
+            ///
+            /// TODO - add alert
+            ///
+            Logger.Info(F("... Attempting to stop blade during cutting/feeding. That is not allowed. Ignoring...."));
+            return;               
+        }
+    }
+
     if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
         if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
         { 
             this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-            this->_display->actions_overlay(true, blade_on, blade_on_size, "Homing", action_green);
+            this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
         }
         else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
         
@@ -140,7 +167,11 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     else 
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);    
-        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED) this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
+        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+        {
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
+            this->_display->actions_overlay(false);
+        }
         else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
     }
 
@@ -162,6 +193,9 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
     if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));
+        ///
+        /// TODO: Add alert 
+        ///
         return;
     }
     if(this->_motion->get_state() == MOTION_STATE::IDLE || this->_motion->get_state() == MOTION_STATE::HOMING)
@@ -170,10 +204,16 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         {
             // the homing task is in progress and we need to terminate it before we can start feeding...
             // we do this by simply simultaing the homing toggle
-            this->home(EXT_GPIO_HOME_PIN, "");
+            ///
+            /// TODO: Add alert 
+            ///
+            this->_motion->home(nullptr);
+            vTaskDelay(pdMS_TO_TICKS(200));
         }
 
         // machine is idle, we need to ensure the blade is running and start feeding
+        this->_display->feeding_complete();
+        vTaskDelay(pdMS_TO_TICKS(200));
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON); 
         if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
@@ -181,22 +221,29 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
             if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
             { 
                 this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
-                //this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
             }
             else this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
         }
+
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+        this->_display->start_cutting_chart();
+        this->_motion->feed([this](){ _display->cutting_complete();});
     }
     else if(this->_motion->get_state() == MOTION_STATE::FEEDING)
     {
         // machine is feeding, we need to stop feeding and switch off the blade if necessary.
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
-        if(this->_motion->activate_blade() == BLADE_STATE::STOPPED)
+        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
         { 
             this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
-            //this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
         }
         else this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
+
+        this->_display->set_workarea_title(nullptr, 0, "");
+        this->_motion->feed(nullptr);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 }
 
@@ -270,7 +317,6 @@ void Controller::manage_coolant(uint8_t gpio, const char* command)
     }
 }
 
-
 /**
  * @brief Toggles a temporary button off.
  * 
@@ -283,7 +329,6 @@ void Controller::toggle_off(uint8_t gpio, const char* command)
 {
     this->_display->set_button(gpio, TOUCH_TAB_STATE::OFF);
 }
-
 
 /**
  * @brief Handles EMS button changes
@@ -338,6 +383,9 @@ void Controller::home(uint8_t gpio, const char* command)
     this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
     if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
     {
+        ///
+        /// TODO: Add alert
+        ///
         Logger.Info(F("... Homing aborted because blade is running"));
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
         return;
@@ -345,7 +393,7 @@ void Controller::home(uint8_t gpio, const char* command)
     if(this->_motion->get_state() == MOTION_STATE::FEEDING)
     {
         ///
-        /// TODO: rethink this. We might instead just abort the feeding. But I think it's better to wait for the feeding to 
+        /// TODO: Add alert. rethink this. We might instead just abort the feeding. But I think it's better to wait for the feeding to 
         /// complete.
         ///
         Logger.Info(F("... Homing aborted because the feed carriage is currently feeding"));
@@ -354,6 +402,9 @@ void Controller::home(uint8_t gpio, const char* command)
     }
     if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
+        ///
+        /// TODO: Add alert
+        ///
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));
         return;
     }

@@ -34,10 +34,12 @@ Motion::~Motion()
     if(this->_manual_speed_task != NULL) vTaskDelete(this->_manual_speed_task);
     if(this->_homing_task != NULL) vTaskDelete(this->_homing_task);
     if(this->_blade_task != NULL) vTaskDelete(this->_blade_task);
+    if(this->_cutting_task != NULL) vTaskDelete(this->_cutting_task);
     this->_manual_feed_task = NULL;
     this->_manual_speed_task = NULL;
     this->_blade_task = NULL;
     this->_homing_task = NULL;
+    this->_cutting_task = NULL;
 
     delete this->_tmc_driver;
     this->_tmc_serial->end();
@@ -454,6 +456,24 @@ void Motion::home(std::function<void()> complete)
 }
 
 /**
+ * @brief Starts the cutting and feeding sequence
+ * 
+ * @param complete - function to call when the homing is complete.
+ */
+void Motion::feed(std::function<void()> complete)
+{
+    if(this->_cutting_task != NULL)
+    {
+        _job_should_exit = true;
+    }
+    else
+    {
+        TaskArgs* args = new TaskArgs { this, std::move(complete) };
+        xTaskCreatePinnedToCore(cutting_runner, "cuttingRunner", 2048, args, 1, &_cutting_task, 1);
+    }    
+}
+
+/**
  * @brief Task function performing the homing to of the feed carriage
  * 
  * @param args - pointer to task arguments 
@@ -531,6 +551,55 @@ void Motion::homing_runner(void * args)
         _this->_state = MOTION_STATE::IDLE;
     }
     _this->_homing_task = NULL;
+    delete _args;
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Task function performing the cutting with automatic feed
+ * 
+ * @param args - pointer to task arguments 
+ */
+void Motion::cutting_runner(void * args)
+{
+    TaskArgs* _args = static_cast<TaskArgs*>(args);
+    Motion* _this = _args->self;
+    uint16_t i=0;
+
+    Logger.Info(F("... Starting feeding and cutting task"));
+    _this->_state = MOTION_STATE::FEEDING;
+
+    while(_this->_feed_limit == false)
+    {
+        if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
+        if(_this->_job_should_exit) break;
+
+        vTaskDelay(50);                     // delay 100ms. There is no risk here as the interrupt handler will
+                                            // disable the stepper as soon as the home limit has been hit. 
+        i++;
+    }
+    digitalWrite(EN_PIN, HIGH);             // disable the stepper in case we terminated due to EMS or user termination.
+    
+    _args->callback();
+    if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
+    {
+        Logger.Info(F("...   Cutting task terminated due to EMS shutdown.")); 
+        _this->_state = MOTION_STATE::SHUTDOWN;
+    }
+    else if(_this->_job_should_exit)
+    {
+        Logger.Info(F("...   Cutting task terminated due to user request.")); 
+        _this->_job_should_exit = false;
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    else
+    {    
+        if(i == 0) Logger.Info(F("...   Carriage already at feed limit."));
+        if(i > 0) Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
+        Logger.Info(F("...   Homing task complete."));
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    _this->_cutting_task = NULL;
     delete _args;
     vTaskDelete(NULL);
 }

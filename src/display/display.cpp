@@ -402,7 +402,7 @@ void Display::homeing_animation_runner(void* args)
     _sprite = new LGFX_Sprite(_this);
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
-    _this->actions_overlay(true, homing, homing_size, "");
+    _this->actions_overlay(true, homing, homing_size);
     _this->_homing_animation_break = false;
     for(;;)
     {
@@ -417,7 +417,7 @@ void Display::homeing_animation_runner(void* args)
     if(!_this->_paused)
     {
         _this->draw_homing_frame(_sprite, 255);
-        _this->actions_overlay(false, nullptr, 0, "");
+        _this->actions_overlay(false);
         _this->set_workarea_title(nullptr, 0, "");
         _this->set_button_tab(EXT_GPIO_HOME_PIN, TOUCH_TAB_STATE::OFF);
     }
@@ -470,5 +470,39 @@ void Display::feed_animation_runner(void* args)
     _this->reset_feed_data(); 
     _this->_feed_animation_break = false;
     _this->_feed_animation = NULL;
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Task function runnign the cutting chart during the cutting operation
+ * @param args - pointer to task arguments
+ */    
+void Display::cutting_chart_runner(void* args)
+{
+    LGFX_Sprite *_sprite = nullptr;
+    Display *_this = reinterpret_cast<Display *>(args);
+    Logger.Info(F("... Cutting chart task started."));
+    _sprite = new LGFX_Sprite(_this);
+    _sprite->createSprite(HOMING_W, HOMING_H);
+    _sprite->setColorDepth(16);
+    _this->set_workarea_title(cutting_title, cutting_title_size, "");
+    _this->_cutting_chart_break = false;
+    for(;;)
+    {
+        if(_this->_paused || _this->_cutting_chart_break) 
+        {
+            if(!_this->_paused)
+            {
+                _this->draw_homing_frame(_sprite, 255);
+                _this->set_workarea_title(nullptr, 0, "");
+            }
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    Logger.Info(F("... Cutting chart task complete."));
+    if(_sprite != nullptr) delete _sprite;
+    _this->_cutting_chart_break = false;
+    _this->_cutting_chart = NULL;
     vTaskDelete(NULL);
 }

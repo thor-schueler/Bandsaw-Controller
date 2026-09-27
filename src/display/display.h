@@ -74,6 +74,7 @@ extern const uint16_t action_green[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
 extern const uint16_t manual_feeding_title[] PROGMEM;
+extern const uint16_t cutting_title[] PROGMEM;
 extern const uint16_t blade_on[] PROGMEM;
 extern const uint16_t D0[] PROGMEM;
 extern const uint16_t D1[] PROGMEM;
@@ -90,6 +91,7 @@ extern const uint16_t DIPM[] PROGMEM;
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 extern const size_t manual_feeding_title_size;
+extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 #pragma endregion
 
@@ -228,7 +230,7 @@ public:
      * @param title - Title string to use
      * @param bg - A pointer to the background image for the overlay. When nullptr, the default background will be used.
      */
-    void actions_overlay(bool active, const uint16_t* title_image, size_t title_image_size, String title = "", const uint16_t* bg = nullptr);  
+    void actions_overlay(bool active, const uint16_t* title_image = nullptr, size_t title_image_size = 0, String title = "", const uint16_t* bg = nullptr);  
 
     /**
      * @brief Starts the homing animation. Once started, the animation will run until terminated by calling 
@@ -245,6 +247,13 @@ public:
      */
     void start_feed_animation(std::function<float()> get_speed=NULL);
 
+    /**
+     * @brief Starts the cutting with autofeed. Once started, the chart will run until terminated by calling 
+     * Display::cutting_complete()
+     * 
+     */
+    void start_cutting_chart();
+    
     /**
      * @brief Pauses task processing. This will result in touch no longer being processed and 
      * running animations being stopped. New animations will not start. 
@@ -271,6 +280,12 @@ public:
      */
     inline void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
 
+    /**
+     * @brief should be called when the cutting with autofeed is complete to terminate the cutting chart.
+     * 
+     */
+    inline void cutting_complete() { if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; };
+
   protected:
 
     /**
@@ -296,6 +311,12 @@ public:
      * @param args - pointer to task arguments
      */    
     static void feed_animation_runner(void* args);
+
+    /**
+     * @brief Task function runnign the cutting chart during the cutting operation
+     * @param args - pointer to task arguments
+     */    
+    static void cutting_chart_runner(void* args);
 
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
@@ -407,10 +428,12 @@ public:
     volatile bool _feed_animation_break = false;
     volatile bool _fas_break = false;
     volatile bool _use_manual_feed_smoothing = false;
+    volatile bool _cutting_chart_break = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
     TaskHandle_t _feed_animation = NULL;
+    TaskHandle_t _cutting_chart = NULL;
     volatile SemaphoreHandle_t _display_mutex;
 };
 
