@@ -423,6 +423,16 @@ public:
     void reset_feed_data();    
     #pragma endregion
 
+    #pragma region automated feed methods
+    /**
+     * @brief Draws the chart area for the automated cutting feed. 
+     * 
+     * @param sprite - Sprite to draw into.
+     */
+    void draw_cutting_chart(LGFX_Sprite * sprite);
+    #pragma endregion
+
+
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;
     volatile bool _feed_animation_break = false;

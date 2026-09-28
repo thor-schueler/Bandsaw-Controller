@@ -498,6 +498,12 @@ void Display::cutting_chart_runner(void* args)
             }
             break;
         }
+        _this->draw_cutting_chart(_sprite);
+        if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        {     
+            _sprite->pushSprite(88, 95);
+            xSemaphoreGive(_this->_display_mutex);
+        }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     Logger.Info(F("... Cutting chart task complete."));
