@@ -354,6 +354,7 @@ void Controller::EMS_change(uint8_t gpio, const char* command)
         
         this->_display->set_button_tab(EXT_GPIO_LUBE_AUTO, (!this->_inputs->digitalReadEx(EXT_GPIO_LUBE_AUTO) || !this->_inputs->digitalReadEx(EXT_GPIO_LUBE_ON)) ? TOUCH_TAB_STATE::WAITING : TOUCH_TAB_STATE::OFF);
         this->_display->set_button_tab(EXT_GPIO_AIR_AUTO, (!this->_inputs->digitalReadEx(EXT_GPIO_AIR_AUTO) || !this->_inputs->digitalReadEx(EXT_GPIO_AIR_ON)) ? TOUCH_TAB_STATE::WAITING : TOUCH_TAB_STATE::OFF);
+        vTaskDelay(pdMS_TO_TICKS(75));
         this->_display->ems_overlay(true);
     }
     else
