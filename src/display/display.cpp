@@ -479,14 +479,18 @@ void Display::feed_animation_runner(void* args)
  */    
 void Display::cutting_chart_runner(void* args)
 {
+    //uint8_t i=20;
     LGFX_Sprite *_sprite = nullptr;
-    Display *_this = reinterpret_cast<Display *>(args);
+    Cut_TaskArgs *_args = reinterpret_cast<Cut_TaskArgs *>(args);
+    Display *_this = _args->self;
+
     Logger.Info(F("... Cutting chart task started."));
     _sprite = new LGFX_Sprite(_this);
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
     _this->set_workarea_title(cutting_title, cutting_title_size, "");
     _this->_cutting_chart_break = false;
+    _this->reset_cutting_data();
     for(;;)
     {
         if(_this->_paused || _this->_cutting_chart_break) 
@@ -498,6 +502,17 @@ void Display::cutting_chart_runner(void* args)
             }
             break;
         }
+        //i = (i+1) % (HOMING_H - CHART_MARGIN*2 - CHART_OFFSET);
+
+        //uint32_t d = i;
+        //d |= i;
+        //d |= i << 8;
+        //d |= i << 16;
+        //d |= i << 24;
+        uint32_t d = _args->metrics_function();
+
+        _this->add_data_point(d);
+        _this->draw_cutting_chart_area(_sprite);
         _this->draw_cutting_chart(_sprite);
         if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
         {     

@@ -125,6 +125,8 @@ typedef enum TOUCH_TAB_STATE{
 
 static constexpr int HOMING_W = 255;
 static constexpr int HOMING_H = 170;
+static constexpr uint8_t CHART_MARGIN = 0;
+static constexpr uint8_t CHART_OFFSET = 17;
 static constexpr int POLAR_PLOT_OFFSET = 90;
 
 static constexpr uint16_t BORG_GREEN   = 0x3666;
@@ -251,8 +253,9 @@ public:
      * @brief Starts the cutting with autofeed. Once started, the chart will run until terminated by calling 
      * Display::cutting_complete()
      * 
+     * @param metrics_function - The function to call to get current cutting metrics
      */
-    void start_cutting_chart();
+    void start_cutting_chart(std::function<uint32_t()> metrics_function);
     
     /**
      * @brief Pauses task processing. This will result in touch no longer being processed and 
@@ -429,7 +432,32 @@ public:
      * 
      * @param sprite - Sprite to draw into.
      */
+    void draw_cutting_chart_area(LGFX_Sprite * sprite);
+
+    /**
+     * @brief Draws the chart for the automated cutting feed. 
+     * 
+     * @param sprite - Sprite to draw into.
+     */
     void draw_cutting_chart(LGFX_Sprite * sprite);
+
+    /**
+     * @brief Adds a data point to the dataset, rotates the set by one. Oldest point is discarded
+     * 
+     * @param data_point the datapoint....
+     *          - bit 0...7     : Feed speed in 10 thou IPM
+     *          - bit 8...15    : Stallguard value (stallguard theoretically gooes to 1023, but any meaningfull value is going to be below 255)
+     *          - bit 16...23   : Stallguard smoothed value
+     *          - bit 24...31   : Stallguard derivative
+     */
+    void add_data_point(uint32_t data_point);
+    
+    /**
+     * @brief Reset the current cutting data
+     * 
+     */
+    void reset_cutting_data();
+
     #pragma endregion
 
 
@@ -445,6 +473,12 @@ public:
     TaskHandle_t _feed_animation = NULL;
     TaskHandle_t _cutting_chart = NULL;
     volatile SemaphoreHandle_t _display_mutex;
+};
+
+struct Cut_TaskArgs
+{
+    Display* self;
+    std::function<uint32_t()> metrics_function;
 };
 
 struct FAS_TaskArgs

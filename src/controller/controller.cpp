@@ -226,8 +226,8 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         }
 
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
-        this->_display->start_cutting_chart();
-        this->_motion->feed([this](){ _display->cutting_complete();});
+        this->_display->start_cutting_chart([this](){ return _motion->get_cutting_metric(); });
+        this->_motion->feed([this](){ _display->cutting_complete(); });
     }
     else if(this->_motion->get_state() == MOTION_STATE::FEEDING)
     {
