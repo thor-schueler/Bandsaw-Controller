@@ -489,6 +489,7 @@ void Display::cutting_chart_runner(void* args)
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
     _this->set_workarea_title(cutting_title, cutting_title_size, "");
+    _this->actions_overlay(true, cutting, cutting_size, "", action_blue);
     _this->_cutting_chart_break = false;
     _this->reset_cutting_data();
     for(;;)
@@ -521,6 +522,7 @@ void Display::cutting_chart_runner(void* args)
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+    _this->actions_overlay(false);
     Logger.Info(F("... Cutting chart task complete."));
     if(_sprite != nullptr) delete _sprite;
     _this->_cutting_chart_break = false;

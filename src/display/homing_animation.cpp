@@ -56,8 +56,8 @@ void Display::draw_grid(LGFX_Sprite *sprite)
     //
     // Grid
     //
-    for(int x = 0; x < HOMING_W; x += 17) sprite->drawFastVLine(x, 0, HOMING_H, LCARS_GRID);
-    for(int y = 0; y < HOMING_H; y += 17) sprite->drawFastHLine(0, y, HOMING_W, LCARS_GRID);
+    for(int x = 0; x < HOMING_W; x += CHART_GRID) sprite->drawFastVLine(x, 0, HOMING_H, LCARS_GRID);
+    for(int y = 0; y < HOMING_H; y += CHART_GRID) sprite->drawFastHLine(0, y, HOMING_W, LCARS_GRID);
 }
 
 /**
