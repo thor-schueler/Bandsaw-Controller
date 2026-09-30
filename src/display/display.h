@@ -71,11 +71,13 @@ extern const uint16_t speeds_and_feeds_inactive[] PROGMEM;
 extern const uint16_t action[] PROGMEM;
 extern const uint16_t action_inactive[] PROGMEM;
 extern const uint16_t action_green[] PROGMEM;
+extern const uint16_t action_blue[] PROGMEM;
 extern const uint16_t homing[] PROGMEM;
 extern const uint16_t homing_title[] PROGMEM;
 extern const uint16_t manual_feeding_title[] PROGMEM;
 extern const uint16_t cutting_title[] PROGMEM;
 extern const uint16_t blade_on[] PROGMEM;
+extern const uint16_t cutting[] PROGMEM;
 extern const uint16_t D0[] PROGMEM;
 extern const uint16_t D1[] PROGMEM;
 extern const uint16_t D2[] PROGMEM;
@@ -93,6 +95,7 @@ extern const size_t homing_size;
 extern const size_t manual_feeding_title_size;
 extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
+extern const size_t cutting_size;
 #pragma endregion
 
 /**
@@ -123,8 +126,17 @@ typedef enum TOUCH_TAB_STATE{
   WAITING
 } touch_tab_state_t;
 
-static constexpr int HOMING_W = 255;
-static constexpr int HOMING_H = 170;
+static constexpr uint8_t HOMING_W = 255;
+static constexpr uint8_t HOMING_H = 170;
+static constexpr uint8_t CUTTING_W = 255;
+static constexpr uint8_t CUTTING_H = 75;
+static constexpr uint8_t CUTTING_GRID = 15;
+static constexpr uint8_t CUTTING_CHART_MARGIN = CUTTING_GRID;
+static constexpr uint8_t CUTTING_CHART_OFFSET = 0;
+
+static constexpr uint8_t CHART_MARGIN = 0;
+static constexpr uint8_t CHART_OFFSET = 17;
+static constexpr uint8_t CHART_GRID = 17;
 static constexpr int POLAR_PLOT_OFFSET = 90;
 
 static constexpr uint16_t BORG_GREEN   = 0x3666;
@@ -251,8 +263,9 @@ public:
      * @brief Starts the cutting with autofeed. Once started, the chart will run until terminated by calling 
      * Display::cutting_complete()
      * 
+     * @param metrics_function - The function to call to get current cutting metrics
      */
-    void start_cutting_chart();
+    void start_cutting_chart(std::function<uint32_t()> metrics_function);
     
     /**
      * @brief Pauses task processing. This will result in touch no longer being processed and 
@@ -429,7 +442,40 @@ public:
      * 
      * @param sprite - Sprite to draw into.
      */
-    void draw_cutting_chart(LGFX_Sprite * sprite);
+    void draw_cutting_chart_area(LGFX_Sprite *sprite);
+
+    /**
+     * @brief Draws the chart for the automated cutting feed. 
+     * 
+     * @param sprite - Sprite to draw into.
+     */
+    void draw_cutting_chart(LGFX_Sprite *sprite);
+
+    /**
+     * @brief Draws the charts are for the cutting metrics graph
+     * 
+     * @param sprite - Sprite to draw into
+     * @param offset - Offset of the graph area from the top of the sprite
+     */
+    void draw_cutting_chart_bg(LGFX_Sprite *sprite, uint8_t offset);
+
+    /**
+     * @brief Adds a data point to the dataset, rotates the set by one. Oldest point is discarded
+     * 
+     * @param data_point the datapoint....
+     *          - bit 0...7     : Feed speed in 10 thou IPM
+     *          - bit 8...15    : Stallguard value (stallguard theoretically gooes to 1023, but any meaningfull value is going to be below 255)
+     *          - bit 16...23   : Stallguard smoothed value
+     *          - bit 24...31   : Stallguard derivative
+     */
+    void add_data_point(uint32_t data_point);
+    
+    /**
+     * @brief Reset the current cutting data
+     * 
+     */
+    void reset_cutting_data();
+
     #pragma endregion
 
 
@@ -445,6 +491,12 @@ public:
     TaskHandle_t _feed_animation = NULL;
     TaskHandle_t _cutting_chart = NULL;
     volatile SemaphoreHandle_t _display_mutex;
+};
+
+struct Cut_TaskArgs
+{
+    Display* self;
+    std::function<uint32_t()> metrics_function;
 };
 
 struct FAS_TaskArgs
