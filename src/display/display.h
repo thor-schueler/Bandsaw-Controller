@@ -50,6 +50,8 @@
 #define DIPM_WIDTH 33
 #define FEED_X_OFFSET 18
 #define FEED_Y_OFFSET 42
+#define STATUS_X 79
+#define STATUS_Y 281
 
 #pragma region asset pointers
 extern const uint16_t background[] PROGMEM;
@@ -90,12 +92,21 @@ extern const uint16_t D8[] PROGMEM;
 extern const uint16_t D9[] PROGMEM;
 extern const uint16_t DDot[] PROGMEM;
 extern const uint16_t DIPM[] PROGMEM;
+extern const uint16_t alerts_active[] PROGMEM;
+extern const uint16_t alerts_inactive[] PROGMEM;
+extern const uint16_t alert_toast[] PROGMEM;
+extern const uint16_t alert_toast_inactive[] PROGMEM;
+extern const uint16_t status[] PROGMEM;
+
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 extern const size_t manual_feeding_title_size;
 extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 extern const size_t cutting_size;
+
+static constexpr uint16_t status_width = 401;
+static constexpr uint16_t status_height = 21;
 #pragma endregion
 
 /**
@@ -183,6 +194,27 @@ public:
      * 
      */
     void draw_canvas();
+
+    /**
+     * @brief Displays an alert toast in the UI
+     * 
+     * @param alert - Alert to display
+     * @param add_to_alert - Whether to add the alert to alerts list. Defaults to True.
+     * @param timeout - timeout for the toast in seconds. Defaults to 10. 
+     */
+    void show_toast(String alert, bool add_to_alert=true, uint8_t timeout=10);
+
+    /**
+     * @brief Hides the toast from the UI
+     * 
+     */
+    void hide_toast();
+
+    /**
+     * @brief Draws the taskbar.
+     * 
+     */
+    void draw_status_bar();
 
     /**
      * @brief Set the icon and background for a button
@@ -490,6 +522,7 @@ public:
     TaskHandle_t _fas_runner = NULL;
     TaskHandle_t _feed_animation = NULL;
     TaskHandle_t _cutting_chart = NULL;
+    esp_timer_handle_t toast_timer = NULL;
     volatile SemaphoreHandle_t _display_mutex;
 };
 

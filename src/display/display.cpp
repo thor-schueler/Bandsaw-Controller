@@ -127,6 +127,18 @@ void Display::begin() {
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
+    esp_timer_create_args_t args = {
+            .callback = [](void* arg)
+                {
+                    Display* _this = static_cast<Display*>(arg);
+                    _this->hide_toast();
+                },
+                .arg = this,
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "toast"
+    };
+    esp_timer_create(&args, &toast_timer);
+
 
     Logger.Info(F("...   Regsiter Touch interrupts"));
     uint8_t ctrl = 0b10010000;
@@ -162,6 +174,24 @@ void Display::draw_canvas()
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
         xSemaphoreGive(this->_display_mutex);
     }    
+}
+
+
+/**
+ * @brief Draws the taskbar.
+ * 
+ */
+void Display::draw_status_bar()
+{
+    LGFX_Sprite taskbar(this);
+    taskbar.setColorDepth(16);
+    taskbar.createSprite(status_width, status_height);
+    taskbar.pushImage(0, 0, status_width, status_height, (lgfx::rgb565_t*)status);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {  
+        taskbar.pushSprite(STATUS_X, STATUS_Y);
+        xSemaphoreGive(this->_display_mutex);
+    }
 }
 
 /**

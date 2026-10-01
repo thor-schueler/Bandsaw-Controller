@@ -131,6 +131,7 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
         ///
         /// TODO: - add alert
         ///
+        this->_display->show_toast(F("Cannot engage blade during homing operation"));
         Logger.Info(F("... Cannot engage blade during homing operation. Ignore..."));
         return;
     }
