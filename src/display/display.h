@@ -50,8 +50,12 @@
 #define DIPM_WIDTH 33
 #define FEED_X_OFFSET 18
 #define FEED_Y_OFFSET 42
+
 #define STATUS_X 79
 #define STATUS_Y 281
+#define ALERTS_BADGE_W 50
+#define ALERTS_BADGE_H 27
+#define TOASTTIMEOUT 3'000'000
 
 #pragma region asset pointers
 extern const uint16_t background[] PROGMEM;
@@ -196,6 +200,14 @@ public:
     void draw_canvas();
 
     /**
+     * @brief Adds an alert to alerts list. There is a maximum of 20 alerts. If the list is full
+     * the last alert will be dropped.
+     * 
+     * @param s - Alert to add
+     */
+    void add_alert(String s);
+
+    /**
      * @brief Displays an alert toast in the UI
      * 
      * @param alert - Alert to display
@@ -331,6 +343,12 @@ public:
      */
     inline void cutting_complete() { if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; };
 
+    /**
+     * @brief Toggles the alert screen on an off.
+     * 
+     */
+    void toggle_alerts();
+
   protected:
 
     /**
@@ -362,6 +380,20 @@ public:
      * @param args - pointer to task arguments
      */    
     static void cutting_chart_runner(void* args);
+
+    /**
+     * @brief Task function running the slide in for a toast. 
+     * 
+     * @param args - pointer to task arguments 
+     */
+    static void slide_toast_in(void *args);
+
+    /**
+     * @brief Runs the status of the badge icon
+     * 
+     * @param args - pointer to task arguments 
+     */
+    static void alerts_badge_runner(void *args);
 
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
@@ -517,13 +549,22 @@ public:
     volatile bool _fas_break = false;
     volatile bool _use_manual_feed_smoothing = false;
     volatile bool _cutting_chart_break = false;
+    volatile bool _toasting_break = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
     TaskHandle_t _feed_animation = NULL;
     TaskHandle_t _cutting_chart = NULL;
+    TaskHandle_t _toastRunner = NULL;
+    TaskHandle_t _alertBadgeRunner = NULL;
     esp_timer_handle_t toast_timer = NULL;
     volatile SemaphoreHandle_t _display_mutex;
+};
+
+struct Toast_Task_Args
+{
+    Display* self;
+    LGFX_Sprite* toast_sprite;
 };
 
 struct Cut_TaskArgs

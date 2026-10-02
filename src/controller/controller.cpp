@@ -55,6 +55,7 @@ void Controller::begin()
     this->_inputs->register_command(EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
+    this->_inputs->register_command(17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->begin();
 
 
@@ -69,6 +70,40 @@ void Controller::begin()
     this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
     this->_inputs->start_monitoring();
     Logger.Info(F("... Done."));
+}
+
+/**
+ * @brief Toggles the Alerts View if appropriate. Note that alerts might not be able to be engaged
+ * during certain operations
+ * 
+ */
+void Controller::view_alerts(uint8_t gpio, const char* command)
+{
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
+            // do nothing when EMS (active low) is active. 
+    if(this->_motion->get_state() == MOTION_STATE::HOMING)
+    {
+        this->_display->show_toast(F("Cannot view alerts while homing is in progress"));
+        Logger.Info(F("... Cannot view alerts while homing is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_state() == MOTION_STATE::FEEDING)
+    {
+        this->_display->show_toast(F("Cannot view alerts while automated cutting is in progress"));
+        Logger.Info(F("... Cannot view alerts while automated cutting is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
+    {
+        this->_display->show_toast(F("Cannot view alerts while blade is running"));
+        Logger.Info(F("... Cannot view alerts while blade is running. Ignore..."));
+        return;
+    }
+
+    //
+    // switch to alert view
+    //
+    this->_display->toggle_alerts();
 }
 
 /**
@@ -128,9 +163,6 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
 
     if(this->_motion->get_state() == MOTION_STATE::HOMING)
     {
-        ///
-        /// TODO: - add alert
-        ///
         this->_display->show_toast(F("Cannot engage blade during homing operation"));
         Logger.Info(F("... Cannot engage blade during homing operation. Ignore..."));
         return;
@@ -139,16 +171,11 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     {
         if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
         {
-            ///
-            /// TODO - add alert
-            ///
             Logger.Info(F("... Attempting to start blade during cutting/feeding. That should not happen, but still, it is allowed...."));
         }
         else
         {
-            ///
-            /// TODO - add alert
-            ///
+            this->_display->show_toast(F("Cannot stop blade during cutting/feeding"));
             Logger.Info(F("... Attempting to stop blade during cutting/feeding. That is not allowed. Ignoring...."));
             return;               
         }
@@ -163,7 +190,6 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
             this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
         }
         else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
-        
     }
     else 
     {
@@ -193,10 +219,8 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
 
     if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
+        this->_display->show_toast(F("Cannot toggle feed while in Settings or Shutdown state"));
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));
-        ///
-        /// TODO: Add alert 
-        ///
         return;
     }
     if(this->_motion->get_state() == MOTION_STATE::IDLE || this->_motion->get_state() == MOTION_STATE::HOMING)
@@ -205,9 +229,7 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         {
             // the homing task is in progress and we need to terminate it before we can start feeding...
             // we do this by simply simultaing the homing toggle
-            ///
-            /// TODO: Add alert 
-            ///
+            this->_display->show_toast(F("Toggling Feeding during homing. Aborting homing."));
             this->_motion->home(nullptr);
             vTaskDelay(pdMS_TO_TICKS(200));
         }
@@ -385,28 +407,21 @@ void Controller::home(uint8_t gpio, const char* command)
     this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
     if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
     {
-        ///
-        /// TODO: Add alert
-        ///
+        this->_display->show_toast(F("Cannot start homing operation while blade is running"));
         Logger.Info(F("... Homing aborted because blade is running"));
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
         return;
     }
     if(this->_motion->get_state() == MOTION_STATE::FEEDING)
     {
-        ///
-        /// TODO: Add alert. rethink this. We might instead just abort the feeding. But I think it's better to wait for the feeding to 
-        /// complete.
-        ///
+        this->_display->show_toast(F("Cannot start homing operation while feeding"));
         Logger.Info(F("... Homing aborted because the feed carriage is currently feeding"));
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
         return;
     }
     if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
-        ///
-        /// TODO: Add alert
-        ///
+        this->_display->show_toast(F("Cannot start feeding while in SETTINGS or SHUTDOWN"));
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));
         return;
     }

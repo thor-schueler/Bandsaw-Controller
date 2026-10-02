@@ -121,6 +121,7 @@ void Display::fas_overlay(bool active, float speed)
         overlay.pushSprite(353, 58);
         xSemaphoreGive(this->_display_mutex);
     }
+    overlay.deleteSprite();
 }
 
 /**
@@ -158,5 +159,6 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
         overlay.pushSprite(353, 201);
         xSemaphoreGive(this->_display_mutex);
     }
+    overlay.deleteSprite();
 }
 

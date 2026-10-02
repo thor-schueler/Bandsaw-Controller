@@ -32,6 +32,9 @@
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
 
+#define MAX_PHYS_INPUTS 16
+#define MAX_INPUTS 20
+
 /**
  * @brief defines an input entry, which determines what methods to call when 
  * a GPIO turns on or off. 
@@ -74,7 +77,7 @@ class Inputs {
      * 
      * @return reference to a std::array of input_entry_t types.  
      */
-    static std::array<input_entry_t, 16>& get_inputs();
+    static std::array<input_entry_t, MAX_INPUTS>& get_inputs();
 
     /**
      * @brief Initialize teh GPIO extender, configure interrupts and start monitoring

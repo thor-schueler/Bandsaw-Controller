@@ -5,7 +5,7 @@
 
 uint8_t __instances = 0;
 
-std::array<input_entry_t, 16> __inputs = {{
+std::array<input_entry_t, MAX_INPUTS> __inputs = {{
     { nullptr, nullptr, EXT_GPIO_ENGAGE_PIN, "Engage Feed", true },
     { nullptr, nullptr, EXT_GPIO_START_PIN, "Toggle Blade", true },
     { nullptr, nullptr, EXT_GPIO_LIGHT_COLD, "Active Cold Light", true },
@@ -21,7 +21,11 @@ std::array<input_entry_t, 16> __inputs = {{
     { nullptr, nullptr, 12, "", true },
     { nullptr, nullptr, 13, "", true },
     { nullptr, nullptr, 14, "", true },
-    { nullptr, nullptr, EXT_GPIO_EMS, "Emergency Shutdown", false}
+    { nullptr, nullptr, EXT_GPIO_EMS, "Emergency Shutdown", false},
+    { nullptr, nullptr, 16, "Settings", true},
+    { nullptr, nullptr, 17, "Alerts", true},
+    { nullptr, nullptr, 18, "", true},
+    { nullptr, nullptr, 19, "", true}
 }};
 
 /**
@@ -114,7 +118,7 @@ void Inputs::resume_monitoring() { this->_pause = false; }
  * 
  * @return reference to a std::array of input_entry_t types.  
  */
-std::array<input_entry_t, 16>& Inputs::get_inputs() {  return __inputs; }
+std::array<input_entry_t, MAX_INPUTS>& Inputs::get_inputs() {  return __inputs; }
 
 /**
  * @brief Registers a command for a specific GPIO
@@ -126,7 +130,7 @@ std::array<input_entry_t, 16>& Inputs::get_inputs() {  return __inputs; }
  */
 void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause)
 {
-    if(gpio < 0 || gpio > 15)
+    if(gpio < 0 || gpio >= MAX_INPUT-1)
     {   
         Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and 15. Ignoring...."), gpio);
         return;
@@ -148,7 +152,7 @@ void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, con
  */
 void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause)
 {
-    if(gpio < 0 || gpio > 15)
+    if(gpio < 0 || gpio >= MAX_INPUT-1)
     {   
         Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and 15. Ignoring...."), gpio);
         return;

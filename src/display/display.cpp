@@ -20,9 +20,9 @@ touch_area_t touch_areas[] = {
   { 0, 191, 63, 222, 64, 191, 73, 222, air_icon, EXT_GPIO_AIR_AUTO, false},
   { 0, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_COLD, false},      
   { 0, 225, 63, 256, 64, 225, 73, 256, light_icon, EXT_GPIO_LIGHT_WARM, false},
-  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 64, true },
+  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 16, true },
   { 359, 143, 413, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
-  { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
+  { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 17, true },
 };
 
 /**
@@ -102,6 +102,12 @@ Display::Display() {
 Display::~Display()
 {
     if(this->_touchRunner != NULL) { vTaskDelete(this->_touchRunner); this->_touchRunner == NULL; }
+    if(this->_homing_animation != NULL) { vTaskDelete(this->_homing_animation); this->_homing_animation == NULL; }
+    if(this->_fas_runner != NULL) { vTaskDelete(this->_fas_runner); this->_fas_runner == NULL; }
+    if(this->_feed_animation != NULL) { vTaskDelete(this->_feed_animation); this->_feed_animation == NULL; }
+    if(this->_cutting_chart != NULL) { vTaskDelete(this->_cutting_chart); this->_cutting_chart == NULL; }
+    if(this->_toastRunner != NULL) { vTaskDelete(this->_toastRunner); this->_toastRunner == NULL; }
+    if(this->_alertBadgeRunner != NULL) { vTaskDelete(this->_alertBadgeRunner); this->_alertBadgeRunner == NULL; }
 }
 
 /**
@@ -127,6 +133,7 @@ void Display::begin() {
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
+    xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
                 {
@@ -170,6 +177,7 @@ void Display::draw_canvas()
         this->setTextSize(1);
 
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
+        this->pushImage(STATUS_X, STATUS_Y, status_width, status_height, (lgfx::rgb565_t*)status);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
         xSemaphoreGive(this->_display_mutex);
@@ -192,12 +200,13 @@ void Display::draw_status_bar()
         taskbar.pushSprite(STATUS_X, STATUS_Y);
         xSemaphoreGive(this->_display_mutex);
     }
+    taskbar.deleteSprite();
 }
 
 /**
  * @brief Set the button tab on a particular button
  * 
- * @param gpio - the gpio number associated with the button
+ * @param gpio - the gpio number associated with the button, there is no action for GPIOs > 64
  * @param on - the desired state of the tab (on, off or pending)
  * 
  * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
@@ -206,6 +215,8 @@ void Display::draw_status_bar()
 void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite tab(this);
+    if(gpio > MAX_PHYS_INPUTS) return; 
+
     tab.setColorDepth(16);                          // setup for RGB565
     tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
     tab.fillSprite(0x0000);
@@ -221,7 +232,7 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 
     for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
     {
-        if(touch_areas[i].gpio == gpio)
+        if(touch_areas[i].gpio == gpio && touch_areas[i].tab_x1 != UINT16_MAX && touch_areas[i].tab_y1 != UINT16_MAX && touch_areas[i].tab_x2 != UINT16_MAX && touch_areas[i].tab_y2 != UINT16_MAX)
         {
             if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {            
@@ -229,13 +240,14 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
                 xSemaphoreGive(this->_display_mutex);
             }
         }
-    }                           
+    }  
+    tab.deleteSprite();                         
 }
 
 /**
  * @brief Set the icon and background for a button
  * 
- * @param gpio - the gpio number associated with the button
+ * @param gpio - the gpio number associated with the button, there is no action for GPIOs > 64
  * @param on - the desired state of the tab (on, off or pending)
  * 
  * @remarks - the value of gpio reflects an actual GPIO if less than 64. Above 64 the value is asusmed to be logically 
@@ -244,6 +256,8 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite button(this);
+    if(gpio > MAX_PHYS_INPUTS) return;                                                  // only process gpios less than 64
+
     button.setColorDepth(16);                                              // setup for RGB565
     button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite
     button.fillSprite(0x0000);
@@ -270,7 +284,8 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
                 xSemaphoreGive(this->_display_mutex);
             } 
         }
-    }                           
+    }
+    button.deleteSprite();                             
 }
 
 /**
@@ -300,6 +315,7 @@ void Display::set_workarea_title(const uint16_t* title_image, size_t title_image
         title_sprite.pushSprite(87, 59);
         xSemaphoreGive(this->_display_mutex);
     }
+    title_sprite.deleteSprite();  
 }
 
 /**
@@ -417,7 +433,9 @@ void Display::touch_runner(void* args)
             }
         }
     }
-    if(_this->_touchRunner != NULL) { vTaskDelete(_this->_touchRunner); _this->_touchRunner = NULL; }
+    Logger.Info(F("...   Touch monitoring task complete."));
+    _this->_touchRunner = NULL;
+    vTaskDelete(NULL);
 }
 
 /**
@@ -453,7 +471,7 @@ void Display::homeing_animation_runner(void* args)
     }
 
     Logger.Info(F("... Homing animation complete."));
-    if(_sprite != nullptr) delete _sprite;
+    if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->_homing_animation_break = false;
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
@@ -496,7 +514,7 @@ void Display::feed_animation_runner(void* args)
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     Logger.Info(F("... Feed animation complete."));
-    if(_sprite != nullptr) delete _sprite;
+    if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->reset_feed_data(); 
     _this->_feed_animation_break = false;
     _this->_feed_animation = NULL;
@@ -554,7 +572,7 @@ void Display::cutting_chart_runner(void* args)
     }
     _this->actions_overlay(false);
     Logger.Info(F("... Cutting chart task complete."));
-    if(_sprite != nullptr) delete _sprite;
+    if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->_cutting_chart_break = false;
     _this->_cutting_chart = NULL;
     vTaskDelete(NULL);
