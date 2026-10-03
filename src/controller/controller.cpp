@@ -103,6 +103,7 @@ void Controller::view_alerts(uint8_t gpio, const char* command)
     //
     // switch to alert view
     //
+    this->_motion->lock();
     this->_display->toggle_alerts();
 }
 
@@ -217,7 +218,7 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
 
-    if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
+    if(this->_motion->get_state() == MOTION_STATE::LOCKED || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
         this->_display->show_toast(F("Cannot toggle feed while in Settings or Shutdown state"));
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));
@@ -419,7 +420,7 @@ void Controller::home(uint8_t gpio, const char* command)
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
         return;
     }
-    if(this->_motion->get_state() == MOTION_STATE::SETTINGS || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
+    if(this->_motion->get_state() == MOTION_STATE::LOCKED || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
     {
         this->_display->show_toast(F("Cannot start feeding while in SETTINGS or SHUTDOWN"));
         Logger.Info(F("... Toggle feed called while in SETTINGS or SHUTDOWN state. Ignoring..."));

@@ -891,7 +891,7 @@ void Motion::process_wheel_movement(int direction, int steps)
     static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
 
-    if(this->_state == MOTION_STATE::SETTINGS) 
+    if(this->_state == MOTION_STATE::LOCKED) 
     {
         // TODO - whatever we need to do during settings management. 
         Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);

@@ -101,7 +101,7 @@ enum class MOTION_STATE : uint8_t {
     IDLE,
     HOMING,
     FEEDING,
-    SETTINGS,
+    LOCKED,
     SHUTDOWN
 };
 using motion_state_t = MOTION_STATE;
@@ -240,6 +240,19 @@ class Motion
          * @param steps - the number of steps moved.
          */
         void process_wheel_movement(int direction, int steps); 
+
+        /**
+         * @brief Puts the machine into MOTION_STATE::LOCKED
+         * 
+         */
+        void lock() { this->_state = MOTION_STATE::LOCKED; }
+
+
+        /**
+         * @brief Puts the machine into MOTION_STATE::IDLE
+         * 
+         */
+        void unlock() { this->_state = MOTION_STATE::IDLE; }
 
     protected:
 
