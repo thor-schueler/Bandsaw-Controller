@@ -166,12 +166,14 @@ void Display::toggle_alerts()
     if(!_showing)
     {
         _has_alerts = false;
+        _screen = SCREENS::ALERTS;
         this->pause_tasks();
         vTaskDelay(pdMS_TO_TICKS(100));
         this->draw_canvas();
     }
     else
     {
+        _screen = SCREENS::MAIN;
         this->draw_canvas();
         this->resume_tasks();
     }

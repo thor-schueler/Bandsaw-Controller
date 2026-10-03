@@ -10,7 +10,9 @@
 #include <FunctionalInterrupt.h>
 
 
-touch_area_t touch_areas[] = {
+
+
+touch_area_t main_touch_areas[] = {
   { 0, 55, 63, 86, 64, 55, 73, 86, start_icon, EXT_GPIO_START_PIN, true },
   { 0, 89, 63, 120, 64, 89, 73, 120, engage_icon, EXT_GPIO_ENGAGE_PIN, true },
   { 0, 123, 63, 154, 64, 123, 73, 154, home_icon, EXT_GPIO_HOME_PIN, true },
@@ -23,6 +25,29 @@ touch_area_t touch_areas[] = {
   { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 16, true },
   { 359, 143, 413, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, true },
   { 416, 143, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 17, true },
+};
+
+touch_area_t alerts_touch_areas[] = {
+  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+};
+
+touch_area_t settings_touch_areas[] = {
+  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+};
+
+touch_screen_t touch_areas[] = {
+    [SCREENS::MAIN] = {
+        main_touch_areas,
+        sizeof(main_touch_areas) / sizeof(main_touch_areas[0])
+    },
+    [SCREENS::ALERTS] = {
+        alerts_touch_areas,
+        sizeof(alerts_touch_areas) / sizeof(alerts_touch_areas[0])
+    },
+    [SCREENS::SETTINGS] = {
+        settings_touch_areas,
+        sizeof(settings_touch_areas) / sizeof(settings_touch_areas[0])
+    }
 };
 
 /**
@@ -215,8 +240,6 @@ void Display::draw_status_bar()
 void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite tab(this);
-    if(gpio > MAX_PHYS_INPUTS) return; 
-
     tab.setColorDepth(16);                          // setup for RGB565
     tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
     tab.fillSprite(0x0000);
@@ -230,13 +253,13 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
         return;
     }
 
-    for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
+    for(int i=0; i< touch_areas[_screen].count; i++) 
     {
-        if(touch_areas[i].gpio == gpio && touch_areas[i].tab_x1 != UINT16_MAX && touch_areas[i].tab_y1 != UINT16_MAX && touch_areas[i].tab_x2 != UINT16_MAX && touch_areas[i].tab_y2 != UINT16_MAX)
+        if(touch_areas[_screen].areas[i].gpio == gpio && touch_areas[_screen].areas[i].tab_x1 != UINT16_MAX && touch_areas[_screen].areas[i].tab_y1 != UINT16_MAX && touch_areas[_screen].areas[i].tab_x2 != UINT16_MAX && touch_areas[_screen].areas[i].tab_y2 != UINT16_MAX)
         {
             if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {            
-                tab.pushSprite(touch_areas[i].tab_x1, touch_areas[i].tab_y1, 0x0000);                                       // push sprite 
+                tab.pushSprite(touch_areas[_screen].areas[i].tab_x1, touch_areas[_screen].areas[i].tab_y1, 0x0000);                                       // push sprite 
                 xSemaphoreGive(this->_display_mutex);
             }
         }
@@ -256,8 +279,6 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 {
     LGFX_Sprite button(this);
-    if(gpio > MAX_PHYS_INPUTS) return;                                                  // only process gpios less than 64
-
     button.setColorDepth(16);                                              // setup for RGB565
     button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite
     button.fillSprite(0x0000);
@@ -270,17 +291,17 @@ void Display::set_button(uint8_t gpio, touch_tab_state_t state)
         return;
     }
 
-    for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
+    for(int i=0; i<touch_areas[_screen].count; i++) 
     {
-        if(touch_areas[i].gpio == gpio)
+        if(touch_areas[_screen].areas[i].gpio == gpio)
         {
             if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {  
-                if(touch_areas[i].icon != NULL)
+                if(touch_areas[_screen].areas[i].icon != NULL)
                 {  
-                    button.pushImage(13, 0, ACTIVE_BUTTON_WIDTH-13, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[i].icon, 0x0000);// push icon overlay   
+                    button.pushImage(13, 0, ACTIVE_BUTTON_WIDTH-13, ACTIVE_BUTTON_HEIGHT, (lgfx::rgb565_t*)touch_areas[_screen].areas[i].icon, 0x0000); // push icon overlay   
                 }
-                button.pushSprite(touch_areas[i].icon_x1, touch_areas[i].icon_y1, 0x0000);                                          // push sprite
+                button.pushSprite(touch_areas[_screen].areas[i].icon_x1, touch_areas[_screen].areas[i].icon_y1, 0x0000);                                // push sprite
                 xSemaphoreGive(this->_display_mutex);
             } 
         }
@@ -383,9 +404,10 @@ void Display::touch_runner(void* args)
     uint16_t x = UINT16_MAX;
     uint16_t y = UINT16_MAX;
     uint8_t sprite_index = UINT8_MAX;
-    bool shouldProcess = true;
-    auto& inputs = Inputs::get_inputs();
     Display *_this = reinterpret_cast<Display *>(args);
+    bool shouldProcess = true;
+    auto& in = Inputs::get_inputs(_this->_screen);
+
     Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {
@@ -397,14 +419,14 @@ void Display::touch_runner(void* args)
             if (_this->_paused)  continue;
             if (_this->getTouch(&x, &y)) 
             {
-                for(int i=0; i<sizeof(touch_areas)/sizeof(touch_areas[0]); i++) 
+                for(int i=0; i<touch_areas[_this->_screen].count; i++) 
                 {
-                    if(x >= touch_areas[i].icon_x1 && x <= touch_areas[i].icon_x2 && y >= touch_areas[i].icon_y1 && y <= touch_areas[i].icon_y2) 
+                    if(x >= touch_areas[_this->_screen].areas[i].icon_x1 && x <= touch_areas[_this->_screen].areas[i].icon_x2 && y >= touch_areas[_this->_screen].areas[i].icon_y1 && y <= touch_areas[_this->_screen].areas[i].icon_y2) 
                     {
-                        if(touch_areas[i].enable == false) break;
-                        uint8_t gpio = touch_areas[i].gpio;
-                        if(gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
-                        if(gpio != UINT8_MAX && inputs[gpio].entry != nullptr) inputs[gpio].entry(gpio, inputs[gpio].command.c_str());
+                        if(touch_areas[_this->_screen].areas[i].enable == false) break;
+                        uint8_t gpio = touch_areas[_this->_screen].areas[i].gpio;
+                        if(gpio < in.max_phys_inputs && gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
+                        if(gpio < in.max_inputs && gpio != UINT8_MAX && in.inputs[gpio].entry != nullptr) in.inputs[gpio].entry(gpio, in.inputs[gpio].command.c_str());
                         sprite_index = i;
                         shouldProcess = false;
                         break;
@@ -424,9 +446,9 @@ void Display::touch_runner(void* args)
                 shouldProcess = true;
                 if(sprite_index != UINT8_MAX)
                 {
-                    uint8_t gpio = touch_areas[sprite_index].gpio;
-                    if(gpio != UINT8_MAX && inputs[gpio].exit != nullptr) inputs[gpio].exit(gpio, inputs[gpio].command.c_str());
-                    if(gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::OFF);
+                    uint8_t gpio = touch_areas[_this->_screen].areas[sprite_index].gpio;
+                    if(gpio < in.max_inputs && gpio != UINT8_MAX && in.inputs[gpio].exit != nullptr) in.inputs[gpio].exit(gpio, in.inputs[gpio].command.c_str());
+                    if(gpio < in.max_phys_inputs && gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::OFF);
                     sprite_index = UINT8_MAX;
                 }
                 gpio_intr_enable((gpio_num_t)TOUCH_IRQ_PIN);
