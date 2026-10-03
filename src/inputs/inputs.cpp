@@ -5,7 +5,7 @@
 
 uint8_t __instances = 0;
 
-std::array<input_entry_t, MAX_INPUTS> __inputs = {{
+std::array<input_entry_t, 20> __inputs_main = {{
     { nullptr, nullptr, EXT_GPIO_ENGAGE_PIN, "Engage Feed", true },
     { nullptr, nullptr, EXT_GPIO_START_PIN, "Toggle Blade", true },
     { nullptr, nullptr, EXT_GPIO_LIGHT_COLD, "Active Cold Light", true },
@@ -27,6 +27,29 @@ std::array<input_entry_t, MAX_INPUTS> __inputs = {{
     { nullptr, nullptr, 18, "", true},
     { nullptr, nullptr, 19, "", true}
 }};
+
+std::array<input_entry_t, 5> __inputs_alerts = {{
+    { nullptr, nullptr, 0, "", true },
+    { nullptr, nullptr, 1, "", true },
+    { nullptr, nullptr, 2, "", true },
+    { nullptr, nullptr, 3, "", true },
+    { nullptr, nullptr, 4, "", true }
+}};
+
+std::array<input_entry_t, 5> __inputs_settings = {{
+    { nullptr, nullptr, 0, "", true },
+    { nullptr, nullptr, 1, "", true },
+    { nullptr, nullptr, 2, "", true },
+    { nullptr, nullptr, 3, "", true },
+    { nullptr, nullptr, 4, "", true }
+}};
+
+inputs_t __inputs [] = 
+{
+    [0] = {__inputs_main.data(), __inputs_main.size(), 16 },
+    [1] = {__inputs_alerts.data(), __inputs_alerts.size(), 0},
+    [2] = {__inputs_settings.data(), __inputs_settings.size(), 0}
+};
 
 /**
  * @brief Construct a new Inputs object
@@ -114,54 +137,57 @@ void Inputs::resume_monitoring() { this->_pause = false; }
 
 
 /**
- * @brief Get the inputs object
+ * @brief Get the inputs object for a screen
+ * @param screen - the screen for which to return the inputs 
  * 
  * @return reference to a std::array of input_entry_t types.  
  */
-std::array<input_entry_t, MAX_INPUTS>& Inputs::get_inputs() {  return __inputs; }
+inputs_t& Inputs::get_inputs(uint8_t screen) {  return __inputs[screen]; }
 
 /**
  * @brief Registers a command for a specific GPIO
  * 
- * @param gpio  - the gpio that will invoke the command 
- * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
- * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
+ * @param screen - the screen index for which to register the command 
+ * @param gpio   - the gpio that will invoke the command 
+ * @param entry  - the function to call when the GPIO goes active (low). NULL if no function should be called.
+ * @param exit   - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
  * @param allow_pause - the command monitoring can be paused for this command
  */
-void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause)
+void Inputs::register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause)
 {
-    if(gpio < 0 || gpio >= MAX_INPUT-1)
+    if(gpio < 0 || gpio > __inputs[screen].max_inputs-1)
     {   
-        Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and 15. Ignoring...."), gpio);
+        Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and %d. Ignoring...."), gpio, __inputs[screen].max_inputs-1);
         return;
     }
-    __inputs[gpio].entry = entry;
-    __inputs[gpio].exit = exit;
-    __inputs[gpio].ext_gpio = gpio;
-    __inputs[gpio].can_be_paused = allow_pause;
+    __inputs[screen].inputs[gpio].entry = entry;
+    __inputs[screen].inputs[gpio].exit = exit;
+    __inputs[screen].inputs[gpio].ext_gpio = gpio;
+    __inputs[screen].inputs[gpio].can_be_paused = allow_pause;
 }
 
 /**
  * @brief Registers a command for a specific GPIO
  * 
+ * @param screen - the screen index for which to register the command
  * @param gpio  - the gpio that will invoke the command 
  * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
  * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
  * @param cmd   - the title of the command. 
  * @param allow_pause - the command monitoring can be paused for this command
  */
-void Inputs::register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause)
+void Inputs::register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause)
 {
-    if(gpio < 0 || gpio >= MAX_INPUT-1)
+    if(gpio < 0 || gpio > __inputs[screen].max_inputs-1)
     {   
-        Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and 15. Ignoring...."), gpio);
+        Logger.Error_f(F("... GPIO %d is invalid. Should be between 0 and %d. Ignoring...."), gpio, __inputs[screen].max_inputs-1);
         return;
     }
-    __inputs[gpio].entry = entry;
-    __inputs[gpio].exit = exit;
-    __inputs[gpio].command = cmd;
-    __inputs[gpio].ext_gpio = gpio;
-    __inputs[gpio].can_be_paused = allow_pause;
+    __inputs[screen].inputs[gpio].entry = entry;
+    __inputs[screen].inputs[gpio].exit = exit;
+    __inputs[screen].inputs[gpio].command = cmd;
+    __inputs[screen].inputs[gpio].ext_gpio = gpio;
+    __inputs[screen].inputs[gpio].can_be_paused = allow_pause;
 }
 
 
@@ -210,9 +236,9 @@ void Inputs::extended_GPIO_watcher(void* args)
             for (int i = 15; i >= 0; --i)
             { 
                 s += (button_state & (1u << i)) ? '1' : '0';
-                if (__inputs[i].can_be_paused && _this->_pause) continue;
-                if (turned_on & (1u << i) && __inputs[i].entry != nullptr) __inputs[i].entry(__inputs[i].ext_gpio, __inputs[i].command.c_str());
-                if (turned_off & (1u << i) && __inputs[i].exit != nullptr) __inputs[i].exit(__inputs[i].ext_gpio, __inputs[i].command.c_str());
+                if (__inputs[0].inputs[i].can_be_paused && _this->_pause) continue;
+                if (turned_on & (1u << i) && __inputs[0].inputs[i].entry != nullptr) __inputs[0].inputs[i].entry(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
+                if (turned_off & (1u << i) && __inputs[0].inputs[i].exit != nullptr) __inputs[0].inputs[i].exit(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
             }
         }
         vTaskDelay(pdMS_TO_TICKS(10));

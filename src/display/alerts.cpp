@@ -165,11 +165,12 @@ void Display::toggle_alerts()
     if(!_showing)
     {
         _has_alerts = false;
+        _screen = SCREENS::ALERTS;
         this->draw_canvas();
     }
     else
     {
-
+        _screen = SCREENS::MAIN;
     }
     _showing = !_showing;
 }

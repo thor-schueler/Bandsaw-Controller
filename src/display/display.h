@@ -113,6 +113,13 @@ static constexpr uint16_t status_width = 401;
 static constexpr uint16_t status_height = 21;
 #pragma endregion
 
+typedef enum SCREENS 
+{
+  MAIN = 0,
+  ALERTS = 1,
+  SETTINGS = 2
+} screens_t;
+
 /**
  * @brief Structure to define the area and behavior of a touch function. 
  * 
@@ -130,6 +137,12 @@ typedef struct {
   uint8_t gpio;
   bool enable;
 } touch_area_t;
+
+typedef struct
+{
+    touch_area_t* areas;
+    uint8_t count;
+} touch_screen_t;
 
 /**
  * @brief Type to represent the touch state
@@ -559,6 +572,7 @@ public:
     TaskHandle_t _alertBadgeRunner = NULL;
     esp_timer_handle_t toast_timer = NULL;
     volatile SemaphoreHandle_t _display_mutex;
+    screens_t _screen = SCREENS::MAIN;
 };
 
 struct Toast_Task_Args

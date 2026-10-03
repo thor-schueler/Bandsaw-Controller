@@ -45,17 +45,17 @@ void Controller::begin()
     this->_display->begin();
     this->_motion->begin();
 
-    this->_inputs->register_command(EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::toggle_feed, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_HOME_PIN, std::bind(&Controller::home, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_LIGHT_COLD, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_LIGHT_WARM, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_AIR_ON, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_AIR_AUTO, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
-    this->_inputs->register_command(EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
-    this->_inputs->register_command(17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(0, EXT_GPIO_START_PIN, std::bind(&Controller::toggle_saw_blade, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_ENGAGE_PIN, std::bind(&Controller::toggle_feed, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_HOME_PIN, std::bind(&Controller::home, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::toggle_off, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_LIGHT_COLD, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_LIGHT_WARM, std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_lights, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_AIR_ON, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_AIR_AUTO, std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_air, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
+    this->_inputs->register_command(0, EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
+    this->_inputs->register_command(0, 17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->begin();
 
 

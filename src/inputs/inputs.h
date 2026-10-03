@@ -32,9 +32,6 @@
 #define EXT_GPIO_LIGHT_COLD 2
 #define EXT_GPIO_EMS 15
 
-#define MAX_PHYS_INPUTS 16
-#define MAX_INPUTS 20
-
 /**
  * @brief defines an input entry, which determines what methods to call when 
  * a GPIO turns on or off. 
@@ -49,6 +46,13 @@ typedef struct input_entry
     bool can_be_paused;
 
 } input_entry_t;
+
+typedef struct inputs 
+{
+    input_entry_t* inputs;
+    uint8_t max_inputs;
+    uint8_t max_phys_inputs;
+} inputs_t;
 
 
 /**
@@ -73,11 +77,12 @@ class Inputs {
     ~Inputs();
 
     /**
-     * @brief Get the inputs object
+     * @brief Get the inputs object for a screen.
+     * @param screen - the screen for which to retrieve the inputs.
      * 
      * @return reference to a std::array of input_entry_t types.  
      */
-    static std::array<input_entry_t, MAX_INPUTS>& get_inputs();
+    static inputs_t& get_inputs(uint8_t screen);
 
     /**
      * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
@@ -106,24 +111,26 @@ class Inputs {
     /**
      * @brief Registers a command for a specific GPIO
      * 
+     * @param screen - the screen index for which to register the command 
      * @param gpio  - the gpio that will invoke the command 
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
      * @param exit  - the function to call when the GPIO goes inactuve (high). NULL if no function should be called.
      * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause);
+    void register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause);
 
 
     /**
      * @brief Registers a command for a specific GPIO
      * 
+     * @param screen - the screen index for which to register the command 
      * @param gpio  - the gpio that will invoke the command 
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
      * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
      * @param cmd   - the title of the command. 
      * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
+    void register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
 
     /**
      * @brief Sets the callback function for wheel events.
@@ -131,8 +138,6 @@ class Inputs {
      * the direction of the wheel movement and the number of steps moved.
      */
     void register_wheel_callback(std::function<void(int, int)> callback) { this->_wheel_callback = callback; };
-
-    void test() {};
 
     /**
      * @brief Reads a specific GPIO on the PCF8575 extender.
