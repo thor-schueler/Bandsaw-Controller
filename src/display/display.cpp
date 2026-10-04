@@ -29,7 +29,7 @@ touch_area_t main_touch_areas[] = {
 
 touch_area_t alerts_touch_areas[] = {
   { 359, 91, 464, 125, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 0, true },
-  { 359, 127, 140, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
+  { 359, 127, 410, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
   { 412, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true },
   { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }  
 };
@@ -250,6 +250,7 @@ void Display::draw_status_bar()
  */
 void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
 {
+    if(this->_screen == SCREENS::ALERTS || this->_screen == SCREENS::EMS) return; 
     LGFX_Sprite tab(this);
     tab.setColorDepth(16);                          // setup for RGB565
     tab.createSprite(TAB_WIDTH, TAB_HEIGHT);        // create sprite
@@ -289,6 +290,7 @@ void Display::set_button_tab(uint8_t gpio, touch_tab_state_t state)
  */
 void Display::set_button(uint8_t gpio, touch_tab_state_t state)
 {
+    if(this->_screen == SCREENS::ALERTS || this->_screen == SCREENS::EMS) return; 
     LGFX_Sprite button(this);
     button.setColorDepth(16);                                              // setup for RGB565
     button.createSprite(ACTIVE_BUTTON_WIDTH, ACTIVE_BUTTON_HEIGHT);        // create sprite

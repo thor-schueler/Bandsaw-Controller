@@ -55,6 +55,8 @@
 #define STATUS_Y 281
 #define ALERTS_BADGE_W 50
 #define ALERTS_BADGE_H 27
+#define ALERTS_PAGE_SIZE 6
+#define ALERTS_DETAIL_H 100
 #define TOASTTIMEOUT 3'000'000
 
 #pragma region asset pointers
@@ -234,9 +236,9 @@ public:
      * 
      * @param alert - Alert to display
      * @param add_to_alert - Whether to add the alert to alerts list. Defaults to True.
-     * @param timeout - timeout for the toast in seconds. Defaults to 10. 
+     * @param timeout - timeout for the toast in seconds. Defaults to 3'000'000. 
      */
-    void show_toast(String alert, bool add_to_alert=true, uint8_t timeout=10);
+    void show_toast(String alert, bool add_to_alert=true, uint32_t timeout=TOASTTIMEOUT);
 
     /**
      * @brief Hides the toast from the UI
@@ -370,6 +372,20 @@ public:
      * 
      */
     void toggle_alerts();
+
+    /**
+     * @brief Pages the alerts page forward or backward
+     * 
+     * @param forward - true to page forward, false to page backward
+     */
+    void page_alerts(bool forward);
+
+    /**
+     * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
+     * @param direction - the direction of the wheel movement.
+     * @param steps - the number of steps moved.
+     */
+    void process_wheel_movement(int direction, int steps);
 
   protected:
 
@@ -566,12 +582,36 @@ public:
 
     #pragma region alert methods
     /**
+     * @brief Truncates a string with an ellipsis until it fits into a certain space.
+     * 
+     * @param sprite - The sprite hosting the canvas to draw into
+     * @param text - The text to operate on 
+     * @param width - The width for the string to fit into
+     * @return String - the truncated string
+     */
+    String truncate_string(lgfx::LGFX_Sprite &sprite, const char* text, int width);
+
+    /**
+     * @brief Draws word wrapped text into the sprite
+     * 
+     * @param sprite - The sprite hosting the canvas to draw into
+     * @param text - The text to draw
+     * @param x - The x coordinate for the start
+     * @param y - The y coordinate for the end
+     * @param maxWidth - The width to fit the text into 
+     * 
+     * @remarks The method will not check for vertical overrun. Vertical overrung will simply be truncated.
+     */
+    void draw_wrapped_text(LGFX_Sprite& sprite, const char* text, int x, int y, int maxWidth);
+
+    /**
      * @brief Writes the alerts to the display starting from the specified index.
      * 
      * @param start - The starting index of the alerts to display.
      * @param size - The number of alerts to display.
+     * @param index - The index of the alert to highlight
      */
-    void write_alerts(uint8_t start, uint8_t size);
+    void write_alerts(uint8_t start, uint8_t size, uint8_t index);
     #pragma endregion
 
     volatile bool _paused = false;
@@ -581,6 +621,7 @@ public:
     volatile bool _use_manual_feed_smoothing = false;
     volatile bool _cutting_chart_break = false;
     volatile bool _toasting_break = false;
+    volatile bool _has_alerts = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
@@ -597,6 +638,7 @@ struct Toast_Task_Args
 {
     Display* self;
     LGFX_Sprite* toast_sprite;
+    uint32_t timeout;
 };
 
 struct Cut_TaskArgs

@@ -63,6 +63,7 @@ inputs_t __inputs [] =
 Inputs::Inputs()
 {
     if(Inputs::_pcf8575 == NULL) Inputs::_pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, Inputs::on_PCF8575_input_changed);
+    _wheel_callbacks.reserve(2);
     __instances++;
 }
 
@@ -268,7 +269,7 @@ void Inputs::wheel_runner(void* args)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         // this section is executed for every wheel position change.
-        if(_this->_wheel_callback != NULL) _this->_wheel_callback(_this->_direction, _this->_wheel_position);
+        for (auto& callback : _this->_wheel_callbacks) callback(_this->_direction, _this->_wheel_position);
     }
 }
 

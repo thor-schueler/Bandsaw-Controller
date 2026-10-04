@@ -113,6 +113,7 @@ void Display::fas_overlay(bool active, float speed)
             x += xx - 2;
         }
         overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
+        if(this->_has_alerts) overlay.pushImage(62, 85, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
     }
     else
     {

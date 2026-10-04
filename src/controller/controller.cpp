@@ -58,6 +58,8 @@ void Controller::begin()
     this->_inputs->register_command(SCREENS::MAIN, 17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
 
     this->_inputs->register_command(SCREENS::ALERTS, 3, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::ALERTS, 2, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::ALERTS, 1, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 0, std::bind(&Controller::clear_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     
     this->_inputs->begin();
@@ -72,6 +74,7 @@ void Controller::begin()
     }
 
     this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
+    this->_inputs->register_wheel_callback([this](int dir, int steps){ _display->process_wheel_movement(dir, steps);});
     this->_inputs->start_monitoring();
     Logger.Info(F("... Done."));
 }
@@ -87,17 +90,17 @@ void Controller::begin()
 void Controller::clear_alerts(uint8_t gpio, const char* command)
 {
     this->_display->clear_alerts();
-    if(this->_motion->get_state() == MOTION_STATE::LOCKED) 
-    {
-        this->_motion->unlock();
-        this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
-        this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
-        this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
-        this->_display->resume_tasks();
-        this->_inputs->resume_monitoring();
-        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
-        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
-    }
+    //if(this->_motion->get_state() == MOTION_STATE::LOCKED) 
+    //{
+    //    this->_motion->unlock();
+    //    this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+    //    this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+    //    this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+    //    this->_display->resume_tasks();
+    //    this->_inputs->resume_monitoring();
+    //    this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+    //    this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+    //}
 }
 
 /**
@@ -132,21 +135,31 @@ void Controller::view_alerts(uint8_t gpio, const char* command)
         return;
     }
 
-    //
-    // switch to alert view
-    //
-    this->_display->toggle_alerts();
-    if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
-    else
+    if(gpio == 3 || gpio == 17)
     {
-        this->_motion->unlock();
-        this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
-        this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
-        this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
-        this->_display->resume_tasks();
-        this->_inputs->resume_monitoring();
-        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
-        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        //
+        // switch to alert view
+        //
+        this->_display->toggle_alerts();
+        if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+        else
+        {
+            this->_motion->unlock();
+            this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+            this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+            this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+            this->_display->resume_tasks();
+            this->_inputs->resume_monitoring();
+            this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+            this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        }
+    }
+    if(gpio == 2 || gpio == 1)
+    {
+        //
+        // page alerts view
+        //
+        this->_display->page_alerts( gpio == 2 ? true : false);
     }
 }
 
@@ -204,7 +217,22 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
 {
     if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
             // do nothing when EMS (active low) is active. 
-
+    
+    if(this->_motion->get_state() == MOTION_STATE::LOCKED || this->_motion->get_state() == MOTION_STATE::SHUTDOWN)
+    {
+        if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
+        {
+            this->_display->show_toast(F("Starting the saw blade while in Settings or Shutdown is not allowed."));
+            Logger.Info(F("... Starting the saw blade while in Settings or Shutdown is not allowed. Ignoring..."));
+            return;
+        }
+        if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
+        {
+            this->_display->show_toast(F("Attempting to turn off running blade while in Settings or Shutdown. This should not happen. Forcing OFF."));
+            Logger.Info(F("... Attempting to turn off running blade while in Settings or Shutdown. This should not happen. Forcing OFF..."));
+                    // we'll proceed to turn off the blade below.
+        }
+    }
     if(this->_motion->get_state() == MOTION_STATE::HOMING)
     {
         this->_display->show_toast(F("Cannot engage blade during homing operation"));
@@ -215,12 +243,12 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     {
         if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
         {
-            Logger.Info(F("... Attempting to start blade during cutting/feeding. That should not happen, but still, it is allowed...."));
+            Logger.Info(F("... Attempting to start blade during cutting or feeding. That should not happen, but still, it is allowed...."));
         }
         else
         {
-            this->_display->show_toast(F("Cannot stop blade during cutting/feeding"));
-            Logger.Info(F("... Attempting to stop blade during cutting/feeding. That is not allowed. Ignoring...."));
+            this->_display->show_toast(F("Cannot stop blade during cutting or feeding"));
+            Logger.Info(F("... Attempting to stop blade during cutting or feeding. That is not allowed. Ignoring...."));
             return;               
         }
     }
