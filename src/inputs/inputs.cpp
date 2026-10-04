@@ -28,12 +28,11 @@ std::array<input_entry_t, 20> __inputs_main = {{
     { nullptr, nullptr, 19, "", true}
 }};
 
-std::array<input_entry_t, 5> __inputs_alerts = {{
-    { nullptr, nullptr, 0, "", true },
-    { nullptr, nullptr, 1, "", true },
-    { nullptr, nullptr, 2, "", true },
-    { nullptr, nullptr, 3, "", true },
-    { nullptr, nullptr, 4, "", true }
+std::array<input_entry_t, 4> __inputs_alerts = {{
+    { nullptr, nullptr, 0, "Clear Alerts", true },
+    { nullptr, nullptr, 1, "Previous", true },
+    { nullptr, nullptr, 2, "Next", true },
+    { nullptr, nullptr, 3, "Return Home", true }
 }};
 
 std::array<input_entry_t, 5> __inputs_settings = {{
@@ -44,11 +43,17 @@ std::array<input_entry_t, 5> __inputs_settings = {{
     { nullptr, nullptr, 4, "", true }
 }};
 
+std::array<input_entry_t, 5> __inputs_ems = {{
+    { nullptr, nullptr, 0, "", true }
+}};
+
+
 inputs_t __inputs [] = 
 {
-    [0] = {__inputs_main.data(), __inputs_main.size(), 16 },
+    [0] = {__inputs_main.data(), __inputs_main.size(), 17 },
     [1] = {__inputs_alerts.data(), __inputs_alerts.size(), 0},
-    [2] = {__inputs_settings.data(), __inputs_settings.size(), 0}
+    [2] = {__inputs_settings.data(), __inputs_settings.size(), 0},
+    [3] = {__inputs_ems.data(), __inputs_settings.size(), 0}
 };
 
 /**

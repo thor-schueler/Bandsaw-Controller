@@ -100,6 +100,7 @@ extern const uint16_t alerts_active[] PROGMEM;
 extern const uint16_t alerts_inactive[] PROGMEM;
 extern const uint16_t alert_toast[] PROGMEM;
 extern const uint16_t alert_toast_inactive[] PROGMEM;
+extern const uint16_t alerts_controls[] PROGMEM;
 extern const uint16_t status[] PROGMEM;
 
 extern const size_t homing_title_size;
@@ -117,7 +118,8 @@ typedef enum SCREENS
 {
   MAIN = 0,
   ALERTS = 1,
-  SETTINGS = 2
+  SETTINGS = 2, 
+  EMS = 3
 } screens_t;
 
 /**

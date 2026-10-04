@@ -28,10 +28,17 @@ touch_area_t main_touch_areas[] = {
 };
 
 touch_area_t alerts_touch_areas[] = {
-  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+  { 359, 91, 464, 125, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 0, true },
+  { 359, 127, 140, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
+  { 412, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true },
+  { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }  
 };
 
 touch_area_t settings_touch_areas[] = {
+  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+};
+
+touch_area_t ems_touch_areas[] = {
   { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
 };
 
@@ -47,6 +54,10 @@ touch_screen_t touch_areas[] = {
     [SCREENS::SETTINGS] = {
         settings_touch_areas,
         sizeof(settings_touch_areas) / sizeof(settings_touch_areas[0])
+    },
+    [SCREENS::EMS] = {
+        ems_touch_areas,
+        sizeof(ems_touch_areas) / sizeof(ems_touch_areas[0])
     }
 };
 
@@ -157,7 +168,7 @@ void Display::begin() {
     }
 
     Logger.Info(F("...   Setup various tasks"));
-    xTaskCreatePinnedToCore(touch_runner, "touchRunner", 2048, this, 1, &_touchRunner, 0);
+    xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
     xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
@@ -405,9 +416,9 @@ void Display::touch_runner(void* args)
     uint16_t y = UINT16_MAX;
     uint8_t sprite_index = UINT8_MAX;
     Display *_this = reinterpret_cast<Display *>(args);
+    screens_t old_screen = SCREENS::MAIN;
     bool shouldProcess = true;
-    auto& in = Inputs::get_inputs(_this->_screen);
-
+    
     Logger.Info(F("...   Touch monitoring task has started."));
     for(;;)
     {
@@ -416,7 +427,7 @@ void Display::touch_runner(void* args)
         {
             // Wait for the notification to come from the event handler
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            if (_this->_paused)  continue;
+            auto& in = Inputs::get_inputs(_this->_screen);         
             if (_this->getTouch(&x, &y)) 
             {
                 for(int i=0; i<touch_areas[_this->_screen].count; i++) 
@@ -427,7 +438,14 @@ void Display::touch_runner(void* args)
                         uint8_t gpio = touch_areas[_this->_screen].areas[i].gpio;
                         if(gpio < in.max_phys_inputs && gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
                         if(gpio < in.max_inputs && gpio != UINT8_MAX && in.inputs[gpio].entry != nullptr) in.inputs[gpio].entry(gpio, in.inputs[gpio].command.c_str());
-                        sprite_index = i;
+                        if(_this->_screen != old_screen) 
+                        { 
+                            old_screen = _this->_screen;
+                            sprite_index = UINT8_MAX; 
+                                    // prevent the exit command from firing as that would be for the wrong screen....
+                                    // alternatively, we could save the screen for the exit, but generally, that will not be necessary
+                        }
+                        else sprite_index = i;
                         shouldProcess = false;
                         break;
                     }
@@ -443,6 +461,7 @@ void Display::touch_runner(void* args)
         {
             if(digitalRead(TOUCH_IRQ_PIN) == HIGH)
             {
+                auto& in = Inputs::get_inputs(_this->_screen);
                 shouldProcess = true;
                 if(sprite_index != UINT8_MAX)
                 {
@@ -573,13 +592,7 @@ void Display::cutting_chart_runner(void* args)
             }
             break;
         }
-        //i = (i+1) % (HOMING_H - CHART_MARGIN*2 - CHART_OFFSET);
 
-        //uint32_t d = i;
-        //d |= i;
-        //d |= i << 8;
-        //d |= i << 16;
-        //d |= i << 24;
         uint32_t d = _args->metrics_function();
 
         _this->add_data_point(d);

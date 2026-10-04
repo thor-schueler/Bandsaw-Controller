@@ -18,6 +18,7 @@ void Display::ems_overlay(bool active)
 {
     if(active)
     {
+        this->_screen = SCREENS::EMS;
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
         {         
             this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
@@ -26,6 +27,7 @@ void Display::ems_overlay(bool active)
     }
     else
     {
+        this->_screen = SCREENS::MAIN;
         this->draw_canvas();
     }
 }

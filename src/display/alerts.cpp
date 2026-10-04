@@ -12,8 +12,6 @@
 constexpr uint8_t MAX_ALERTS = 20;
 constexpr uint8_t MAX_ALERT_LEN = 64;
 bool _has_alerts = false;
-bool _showing = false;
-
 char _alerts[MAX_ALERTS][MAX_ALERT_LEN];
 
 /**
@@ -163,13 +161,20 @@ void Display::alerts_badge_runner(void *args)
  */
 void Display::toggle_alerts()
 {
-    if(!_showing)
+    LGFX_Sprite controls(this);
+
+    if(!_screen == SCREENS::ALERTS)
     {
         _has_alerts = false;
         _screen = SCREENS::ALERTS;
         this->pause_tasks();
         vTaskDelay(pdMS_TO_TICKS(100));
         this->draw_canvas();
+        controls.setColorDepth(16);
+        controls.createSprite(127, 143);
+        controls.fillSprite(TFT_BLACK);
+        controls.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)alerts_controls);
+
     }
     else
     {
@@ -177,5 +182,4 @@ void Display::toggle_alerts()
         this->draw_canvas();
         this->resume_tasks();
     }
-    _showing = !_showing;
 }
