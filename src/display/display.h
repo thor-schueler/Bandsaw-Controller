@@ -101,6 +101,7 @@ extern const uint16_t alerts_inactive[] PROGMEM;
 extern const uint16_t alert_toast[] PROGMEM;
 extern const uint16_t alert_toast_inactive[] PROGMEM;
 extern const uint16_t alerts_controls[] PROGMEM;
+extern const uint16_t alerts_title[] PROGMEM;
 extern const uint16_t status[] PROGMEM;
 
 extern const size_t homing_title_size;
@@ -109,6 +110,7 @@ extern const size_t manual_feeding_title_size;
 extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 extern const size_t cutting_size;
+extern const size_t alerts_title_size;
 
 static constexpr uint16_t status_width = 401;
 static constexpr uint16_t status_height = 21;
@@ -213,6 +215,11 @@ public:
      * 
      */
     void draw_canvas();
+
+    /**
+     * @brief Clears the alerts cache
+     */
+    void clear_alerts();
 
     /**
      * @brief Adds an alert to alerts list. There is a maximum of 20 alerts. If the list is full
@@ -557,6 +564,15 @@ public:
 
     #pragma endregion
 
+    #pragma region alert methods
+    /**
+     * @brief Writes the alerts to the display starting from the specified index.
+     * 
+     * @param start - The starting index of the alerts to display.
+     * @param size - The number of alerts to display.
+     */
+    void write_alerts(uint8_t start, uint8_t size);
+    #pragma endregion
 
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;

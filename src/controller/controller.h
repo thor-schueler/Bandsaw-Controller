@@ -117,6 +117,16 @@ class Controller
          */
         void view_alerts(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Clears the alerts cache
+         * 
+         * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the function signature is a delegate for the input watcher 
+         */
+        void clear_alerts(uint8_t gpio, const char* command);
+
     private:
 
         void switch_on(uint8_t gpio, const char* command);

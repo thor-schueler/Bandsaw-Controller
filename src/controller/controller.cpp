@@ -58,6 +58,7 @@ void Controller::begin()
     this->_inputs->register_command(SCREENS::MAIN, 17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
 
     this->_inputs->register_command(SCREENS::ALERTS, 3, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::ALERTS, 0, std::bind(&Controller::clear_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     
     this->_inputs->begin();
 
@@ -76,9 +77,37 @@ void Controller::begin()
 }
 
 /**
+ * @brief Clears the alerts cache
+ * 
+ * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+ * @param command - Command name passed in from the input watcher
+ * 
+ * @remarks - the function signature is a delegate for the input watcher
+ */
+void Controller::clear_alerts(uint8_t gpio, const char* command)
+{
+    this->_display->clear_alerts();
+    if(this->_motion->get_state() == MOTION_STATE::LOCKED) 
+    {
+        this->_motion->unlock();
+        this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+        this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+        this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+        this->_display->resume_tasks();
+        this->_inputs->resume_monitoring();
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+    }
+}
+
+/**
  * @brief Toggles the Alerts View if appropriate. Note that alerts might not be able to be engaged
  * during certain operations
  * 
+ * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+ * @param command - Command name passed in from the input watcher
+ * 
+ * @remarks - the function signature is a delegate for the input watcher
  */
 void Controller::view_alerts(uint8_t gpio, const char* command)
 {
@@ -106,8 +135,19 @@ void Controller::view_alerts(uint8_t gpio, const char* command)
     //
     // switch to alert view
     //
-    this->_motion->lock();
     this->_display->toggle_alerts();
+    if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+    else
+    {
+        this->_motion->unlock();
+        this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+        this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+        this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+        this->_display->resume_tasks();
+        this->_inputs->resume_monitoring();
+        this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+        this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+    }
 }
 
 /**

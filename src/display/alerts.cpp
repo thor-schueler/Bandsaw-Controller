@@ -162,7 +162,6 @@ void Display::alerts_badge_runner(void *args)
 void Display::toggle_alerts()
 {
     LGFX_Sprite controls(this);
-
     if(!_screen == SCREENS::ALERTS)
     {
         _has_alerts = false;
@@ -170,16 +169,58 @@ void Display::toggle_alerts()
         this->pause_tasks();
         vTaskDelay(pdMS_TO_TICKS(100));
         this->draw_canvas();
+        this->set_workarea_title(alerts_title, alerts_title_size, "");
         controls.setColorDepth(16);
         controls.createSprite(127, 143);
         controls.fillSprite(TFT_BLACK);
         controls.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)alerts_controls);
-
+        if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        { 
+            controls.pushSprite(353, 58);
+            xSemaphoreGive(this->_display_mutex);
+        }
+        controls.deleteSprite();
+        this->write_alerts(0, 10);
     }
     else
     {
         _screen = SCREENS::MAIN;
         this->draw_canvas();
         this->resume_tasks();
+    }
+}
+
+/**
+ * @brief Clears the alerts cache
+ */
+void Display::clear_alerts()
+{
+    memset(_alerts, 0, sizeof(_alerts));
+    _has_alerts = false;
+    this->toggle_alerts();
+}
+
+/**
+ * @brief Writes the alerts to the display starting from the specified index.
+ * 
+ * @param start - The starting index of the alerts to display.
+ * @param size - The number of alerts to display.
+ */
+void Display::write_alerts(uint8_t start, uint8_t size)
+{
+    LGFX_Sprite s(this);
+    s.setColorDepth(16);
+    s.createSprite(HOMING_W, HOMING_H);
+    s.fillSprite(TFT_BLACK);
+    s.setTextColor(BORG_GREEN, TFT_BLACK);
+    s.setCursor(5, 5);
+    s.setFont(&fonts::Font0);
+    s.setTextSize(1);
+    for(uint8_t i = start; i < start + size && i < MAX_ALERTS; i++) s.drawString(_alerts[i], 5, 5 + (i-start)* 10); 
+        //s.println(_alerts[i]);
+    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    {  
+        s.pushSprite(88, 95);
+        xSemaphoreGive(this->_display_mutex);
     }
 }
