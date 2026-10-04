@@ -34,10 +34,12 @@ Motion::~Motion()
     if(this->_manual_speed_task != NULL) vTaskDelete(this->_manual_speed_task);
     if(this->_homing_task != NULL) vTaskDelete(this->_homing_task);
     if(this->_blade_task != NULL) vTaskDelete(this->_blade_task);
+    if(this->_cutting_task != NULL) vTaskDelete(this->_cutting_task);
     this->_manual_feed_task = NULL;
     this->_manual_speed_task = NULL;
     this->_blade_task = NULL;
     this->_homing_task = NULL;
+    this->_cutting_task = NULL;
 
     delete this->_tmc_driver;
     this->_tmc_serial->end();
@@ -454,6 +456,24 @@ void Motion::home(std::function<void()> complete)
 }
 
 /**
+ * @brief Starts the cutting and feeding sequence
+ * 
+ * @param complete - function to call when the homing is complete.
+ */
+void Motion::feed(std::function<void()> complete)
+{
+    if(this->_cutting_task != NULL)
+    {
+        _job_should_exit = true;
+    }
+    else
+    {
+        TaskArgs* args = new TaskArgs { this, std::move(complete) };
+        xTaskCreatePinnedToCore(cutting_runner, "cuttingRunner", 2048, args, 1, &_cutting_task, 1);
+    }    
+}
+
+/**
  * @brief Task function performing the homing to of the feed carriage
  * 
  * @param args - pointer to task arguments 
@@ -531,6 +551,129 @@ void Motion::homing_runner(void * args)
         _this->_state = MOTION_STATE::IDLE;
     }
     _this->_homing_task = NULL;
+    delete _args;
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Task function performing the cutting with automatic feed
+ * 
+ * @param args - pointer to task arguments 
+ */
+void Motion::cutting_runner(void * args)
+{
+    static constexpr uint8_t N = 5;
+    TaskArgs* _args = static_cast<TaskArgs*>(args);
+    Motion* _this = _args->self;
+    uint32_t last = 0;
+    uint16_t _s = _this->_frequency;
+    uint16_t i=0;
+    uint16_t sg_sum = 0;
+    uint16_t sg_d = 0;
+    uint8_t sg = 0;    
+    uint8_t sg_smooth = 0;
+    uint8_t sg_a[N] = {0,0,0,0,0};
+    uint8_t period = UINT8_MAX;
+    bool startup_complete = false;    
+
+    Logger.Info(F("... Starting feeding and cutting task"));
+    _this->_state = MOTION_STATE::FEEDING;
+
+    // configure TMC2209 for stall guard. This means we need to run at lower speed, but that is fine :)
+    _this->_tmc_driver->en_spreadCycle(true);               // StallGuard ONLY works in SpreadCycle
+    _this->_tmc_driver->TCOOLTHRS(0xFFFFF);                 // Sets the minimum speed at which StallGuard and CoolStep are active. Range from 0...0xffff
+    _this->_tmc_driver->SGTHRS(50);                         // Threshold value where the stall interrupt is called. The value is 0...255.
+                                                            // 5-20    low sensitivity
+                                                            // 20-50   moderate
+                                                            // 50-100  high
+                                                            // 100+    very sensitive
+                                                            // the threshold might need to be adjusted depending on the speed.
+    
+    _this->_frequency = FREQUENCY_FEED_START;
+    esp_err_t r = ledc_channel_config(&_channel_config);
+    if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
+    r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+    if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
+            // enable PWM to drive the stepper
+
+    Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
+    digitalWrite(DIR_PIN, HIGH);         // set direction towards the blade
+    digitalWrite(EN_PIN, LOW);          // enable stepper
+    while(_this->_feed_limit == false)
+    {
+        if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
+        if(_this->_job_should_exit) break;
+
+        if(_this->_frequency < FREQUENCY_FEED && !startup_complete)     // ramp up feed from 0
+        {                                                               // to avoid shocking the motor
+            _this->_frequency += FREQUENCY_FEED_INCREMENT;
+            if(_this->_frequency >= FREQUENCY_FEED) 
+            {
+                _this->_frequency = FREQUENCY_FEED;
+                startup_complete = true;
+            }
+            ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
+        }
+
+        float s = _this->feed_rate_ipm() * 100;
+        uint32_t now = millis();
+        if(last > 0) period = now - last;
+        last = now;
+        sg = static_cast<uint8_t>(std::min<uint16_t>(255, _this->_tmc_driver->SG_RESULT()));
+        sg_sum -= sg_a[i];
+        sg_a[i] = sg;
+        sg_sum += sg;
+        sg_smooth = sg_sum / N;
+        sg_d = abs((int16_t)sg_smooth - static_cast<int16_t>(((_this->_cutting_metric >> 16) & 0xFF)));
+        sg_d = std::min<uint16_t>(255, sg_d * 1000 / std::min<uint8_t>(UINT8_MAX, period)); 
+
+        uint32_t r = 0;
+        r |= s > 255.0f ? 255: static_cast<uint8_t>(s);
+        r |= sg_a[i] << 8;
+        r |= sg_smooth << 16;
+        r |= static_cast<uint8_t>(sg_d) << 24;
+        _this->_cutting_metric = r;
+
+        vTaskDelay(50);                                     // delay 100ms. There is no risk here as the interrupt handler will
+                                                            // disable the stepper as soon as the home limit has been hit. 
+        i = (i + 1) % N;
+    }
+    digitalWrite(EN_PIN, HIGH);                             // disable the stepper in case we terminated due to EMS or user termination.
+                                                            // reset TMC2209 stall guard configuration.
+    _this->_tmc_driver->en_spreadCycle(false);              // StallGuard ONLY works in SpreadCycle
+    _this->_tmc_driver->TCOOLTHRS(0);                       // Stallguard disabled at this time
+    _this->_tmc_driver->SGTHRS(0);                          // Stallguard disabled at this time
+    _this->_cutting_metric = 0;
+
+    r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s < FREQUENCY_MIN ? FREQUENCY_MIN : _s); 
+    if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
+    r = ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    pinMode(STEP_PIN, OUTPUT); 
+                // Stop LEDC PWM for now, force STEP low this allow for manual control. 
+                // we are only using PWM feed for homing and feeding. 
+    if(r != ESP_OK) Logger.Error_f(F("PWM channel pausing failed with 0x%04X"), r);
+    _this->_frequency = 0;
+
+    _args->callback();
+    if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
+    {
+        Logger.Info(F("...   Cutting task terminated due to EMS shutdown.")); 
+        _this->_state = MOTION_STATE::SHUTDOWN;
+    }
+    else if(_this->_job_should_exit)
+    {
+        Logger.Info(F("...   Cutting task terminated due to user request.")); 
+        _this->_job_should_exit = false;
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    else
+    {    
+        if(i == 0) Logger.Info(F("...   Carriage already at feed limit."));
+        if(i > 0) Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
+        Logger.Info(F("...   Homing task complete."));
+        _this->_state = MOTION_STATE::IDLE;
+    }
+    _this->_cutting_task = NULL;
     delete _args;
     vTaskDelete(NULL);
 }
@@ -689,6 +832,20 @@ float Motion::feed_rate_ipm()
 }
 
 
+/**
+ * @brief Gets the cutting metric for the current cut. If the machine is not in cutting mode, it will return 0. 
+ * 
+ * @return uint32_t - A compound of four different cutting indicators, each a uint8_t: 
+ *          - bit 0...7     : Feed speed in 10 thou IPM
+ *          - bit 8...15    : Stallguard value (stallguard theoretically gooes to 1023, but any meaningfull value is going to be below 255)
+ *          - bit 16...23   : Stallguard smoothed value
+ *          - bit 24...31   : Stallguard derivative
+ */
+uint32_t Motion::get_cutting_metric()
+{
+    return this->_cutting_metric;
+}
+
 /** 
  * @brief Monitors the feed speed in manual feeding mode.
  * 
@@ -733,25 +890,21 @@ void Motion::process_wheel_movement(int direction, int steps)
 { 
     static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
-
-    if(this->_state == MOTION_STATE::SETTINGS) 
-    {
-        // TODO - whatever we need to do during settings management. 
-        Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
-    }
+    if(this->_state == MOTION_STATE::LOCKED) return;
+        // Motion evaluation during locked state (settings, alerts) is done by the didplay, so we do nothing here....
 
     if(this->_state == MOTION_STATE::HOMING || this->_state == MOTION_STATE::FEEDING)
     {
         // when homing or feeding, the wheel will increase and decrease the 
         // homing speed....
-        uint16_t f = this->_frequency.load() + direction * FREQUENCY_HOME_MANUAL_INCREMENT; 
-        if(f < FREQUENCY_MIN) f = FREQUENCY_MIN;
-        if(f > FREQUENCY_MAX) f = FREQUENCY_MAX;
+        uint16_t f = this->_frequency.load() + direction * (this->_state == MOTION_STATE::HOMING ? FREQUENCY_HOME_MANUAL_INCREMENT : FREQUENCY_FEED_INCREMENT); 
+        if(f < (this->_state == MOTION_STATE::HOMING ? FREQUENCY_MIN : FREQUENCY_FEED_MIN)) f = this->_state == MOTION_STATE::HOMING ? FREQUENCY_MIN : FREQUENCY_FEED_MIN;
+        if(f > (this->_state == MOTION_STATE::HOMING ? FREQUENCY_MAX : FREQUENCY_FEED_MAX)) f = this->_state == MOTION_STATE::HOMING ? FREQUENCY_MAX : FREQUENCY_FEED_MAX;
         if(f != this->_frequency.load())
         {
             this->_frequency.store(f);
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, f);
-            Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
+            //Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
         } 
     }
     
@@ -794,7 +947,7 @@ void Motion::process_wheel_movement(int direction, int steps)
                 {
                     this->_manual_frequency.store(tf);
                     ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
-                    Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+                    //Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
                 }
             }
         }

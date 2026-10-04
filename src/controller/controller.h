@@ -60,6 +60,16 @@ class Controller
         void toggle_saw_blade(uint8_t gpio, const char* command);
 
         /**
+         * @brief Workflow to toggle the feed carriage on or off. Will intrisically toggle the blade on or off as appropriate. 
+         * 
+         * @param gpio - GPIO for the engage toggle.
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the function signature is a delegate for the input watcher
+         */         
+        void toggle_feed(uint8_t gpio, const char* command);
+
+        /**
          * @brief Workflow to manage air blast. 
          * 
          * @param gpio - GPIO for the start/stop toggle.
@@ -98,6 +108,24 @@ class Controller
          */
         void home(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Toggles the Alerts View if appropriate. Note that alerts might not be able to be engaged
+         * during certain operations
+         * 
+         * @param gpio - GPIO for the home toggle.
+         * @param command - Command name passed in from the input watcher
+         */
+        void view_alerts(uint8_t gpio, const char* command);
+
+        /**
+         * @brief Clears the alerts cache
+         * 
+         * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the function signature is a delegate for the input watcher 
+         */
+        void clear_alerts(uint8_t gpio, const char* command);
 
     private:
 

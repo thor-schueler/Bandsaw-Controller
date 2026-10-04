@@ -50,6 +50,12 @@
 #define FREQUENCY_HOME 800 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
 #define FREQUENCY_BASE 400 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
 
+#define FREQUENCY_FEED_MIN 12 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_FEED_MAX 250 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_FEED 100 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS) 
+#define FREQUENCY_FEED_START FREQUENCY_FEED_MIN
+#define FREQUENCY_FEED_INCREMENT 2 * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS)
+
 // wheel parameters
 #define STEPS_PER_CLICK 100
 #define PERIOD_OVERSHOOT_FACTOR 1.2f
@@ -95,7 +101,7 @@ enum class MOTION_STATE : uint8_t {
     IDLE,
     HOMING,
     FEEDING,
-    SETTINGS,
+    LOCKED,
     SHUTDOWN
 };
 using motion_state_t = MOTION_STATE;
@@ -191,6 +197,13 @@ class Motion
         void home(std::function<void()> complete);
 
         /**
+         * @brief Starts the cutting and feeding sequence
+         * 
+         * @param complete - function to call when the homing is complete.
+         */
+        void feed(std::function<void()> complete);
+
+        /**
          * @brief Gets the current state of the motion object
          * 
          * @return motion_state_t - a state enum class.
@@ -211,11 +224,35 @@ class Motion
         float feed_rate_ipm();
 
         /**
+         * @brief Gets the cutting metric for the current cut. If the machine is not in cutting mode, it will return 0. 
+         * 
+         * @return uint32_t - A compound of four different cutting indicators, each a uint8_t: 
+         *          - bit 0...7     : Feed speed in 10 thou IPM
+         *          - bit 8...15    : Stallguard value (stallguard theoretically gooes to 1023, but any meaningfull value is going to be below 255)
+         *          - bit 16...23   : Stallguard smoothed value
+         *          - bit 24...31   : Stallguard derivative
+         */
+        uint32_t get_cutting_metric();
+
+        /**
          * @brief Processes wheel movement events and takes the appropriate actions depending on hte motion state.
          * @param direction - the direction of the wheel movement.
          * @param steps - the number of steps moved.
          */
         void process_wheel_movement(int direction, int steps); 
+
+        /**
+         * @brief Puts the machine into MOTION_STATE::LOCKED
+         * 
+         */
+        void lock() { this->_state = MOTION_STATE::LOCKED; }
+
+
+        /**
+         * @brief Puts the machine into MOTION_STATE::IDLE
+         * 
+         */
+        void unlock() { this->_state = MOTION_STATE::IDLE; }
 
     protected:
 
@@ -239,6 +276,13 @@ class Motion
          * @param args - pointer to task arguments 
          */
         static void homing_runner(void * args);
+
+        /**
+         * @brief Task function performing the cutting with automatic feed
+         * 
+         * @param args - pointer to task arguments 
+         */
+        static void cutting_runner(void * args);
 
         /**
          * @brief Task function performing manual movement based on the wheel motion
@@ -280,8 +324,9 @@ class Motion
         volatile bool _blade_job_should_exit = false;
         volatile bool _speed_monitor_should_exit = false;
         volatile bool _stall_alert = false;
+        volatile float _manual_speed = 0;        
         volatile uint32_t _last_wheel_click = 0;
-        volatile float _manual_speed = 0;
+        uint32_t _cutting_metric = 0;
 
         volatile motion_state_t _state = MOTION_STATE::IDLE;
         volatile ems_state_t _ems_state = EMS_STATE::RUNNING;
@@ -291,6 +336,7 @@ class Motion
         TaskHandle_t _manual_feed_task = NULL;
         TaskHandle_t _manual_speed_task = NULL;
         TaskHandle_t _blade_task = NULL;
+        TaskHandle_t _cutting_task = NULL;
 };
 
 struct TaskArgs
