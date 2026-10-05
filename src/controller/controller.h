@@ -108,6 +108,24 @@ class Controller
          */
         void home(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Toggles the Alerts View if appropriate. Note that alerts might not be able to be engaged
+         * during certain operations
+         * 
+         * @param gpio - GPIO for the home toggle.
+         * @param command - Command name passed in from the input watcher
+         */
+        void view_alerts(uint8_t gpio, const char* command);
+
+        /**
+         * @brief Clears the alerts cache
+         * 
+         * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+         * @param command - Command name passed in from the input watcher
+         * 
+         * @remarks - the function signature is a delegate for the input watcher 
+         */
+        void clear_alerts(uint8_t gpio, const char* command);
 
     private:
 

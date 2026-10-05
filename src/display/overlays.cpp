@@ -18,6 +18,7 @@ void Display::ems_overlay(bool active)
 {
     if(active)
     {
+        this->_screen = SCREENS::EMS;
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
         {         
             this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
@@ -26,6 +27,7 @@ void Display::ems_overlay(bool active)
     }
     else
     {
+        this->_screen = SCREENS::MAIN;
         this->draw_canvas();
     }
 }
@@ -111,6 +113,7 @@ void Display::fas_overlay(bool active, float speed)
             x += xx - 2;
         }
         overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
+        if(this->_has_alerts) overlay.pushImage(62, 85, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
     }
     else
     {
@@ -121,6 +124,7 @@ void Display::fas_overlay(bool active, float speed)
         overlay.pushSprite(353, 58);
         xSemaphoreGive(this->_display_mutex);
     }
+    overlay.deleteSprite();
 }
 
 /**
@@ -158,5 +162,6 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
         overlay.pushSprite(353, 201);
         xSemaphoreGive(this->_display_mutex);
     }
+    overlay.deleteSprite();
 }
 
