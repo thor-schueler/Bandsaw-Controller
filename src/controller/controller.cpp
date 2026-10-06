@@ -227,19 +227,21 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
 
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
         this->_display->start_cutting_chart([this](){ return _motion->get_cutting_metric(); });
-        this->_motion->feed([this](){ _display->cutting_complete(); });
+        this->_motion->feed([this, gpio](){ 
+            this->_display->cutting_complete(); 
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
+            this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->get_blade_status() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
+            this->_display->set_workarea_title(nullptr, 0, "");
+            vTaskDelay(pdMS_TO_TICKS(200));
+            this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        });
     }
     else if(this->_motion->get_state() == MOTION_STATE::FEEDING)
     {
         // machine is feeding, we need to stop feeding and switch off the blade if necessary.
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
-        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
-        { 
-            this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
-        }
-        else this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
-
+        this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->deactivate_blade() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
         this->_display->set_workarea_title(nullptr, 0, "");
         this->_motion->feed(nullptr);
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -418,7 +420,12 @@ void Controller::home(uint8_t gpio, const char* command)
         this->_display->set_workarea_title(homing_title, homing_title_size, "");
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
         this->_display->start_homing_animation();
-        this->_motion->home([this](){ _display->homing_complete();}); 
+        this->_motion->home([this](){ 
+            this->_display->homing_complete(); 
+            this->_display->set_workarea_title(nullptr, 0, "");
+            vTaskDelay(pdMS_TO_TICKS(200));
+            this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        }); 
     }
     else if (this->_motion->get_state() == MOTION_STATE::HOMING)
     {
@@ -428,16 +435,3 @@ void Controller::home(uint8_t gpio, const char* command)
         this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
     }
 }    
-
-
-void Controller::switch_on(uint8_t gpio, const char* command)
-{
-    Logger.Info_f(F("Command on: %s, gpio %d"), command, gpio);
-    this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-}
-
-void Controller::switch_off(uint8_t gpio, const char* command)
-{
-    Logger.Info_f(F("Command off: %s, gpio %d"), command, gpio);
-    this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
-}

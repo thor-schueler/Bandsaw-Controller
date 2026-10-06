@@ -157,15 +157,13 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
     uint32_t currentTime = millis(); 
 
-    if ((currentTime - lastDebounceTime) < 250) return;                         // ignore bounces
+    if ((currentTime - lastDebounceTime) < 250) return;         // ignore bounces
 
     Motion *_this = reinterpret_cast<Motion *>(arg);  
-    bool hl = false;
-    bool fl = false;
-    bool dir = digitalRead(DIR_PIN);
+    bool hl = digitalRead(LIMIT_1_PIN);                         // home limit - active low
+    bool fl = digitalRead(LIMIT_2_PIN);                         // feed limit - active low
+    bool dir = digitalRead(DIR_PIN);                            // low - towards home, high - towards feed
 
-    hl = digitalRead(LIMIT_1_PIN);                              // active low
-    fl = digitalRead(LIMIT_2_PIN);                              // active low
     if((!hl && !dir) || (!fl && dir))
     {
         if(!hl && !dir) _this->_home_limit = true;
@@ -174,9 +172,7 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     }
     if(hl) _this->_home_limit = false;
     if(fl) _this->_feed_limit = false;
-    if(!hl && !dir) _this->_home_limit = true;
-    if(!fl && dir) _this->_feed_limit = true;
-    if(_this->_home_limit || _this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
+    if(!fl) _this->deactivate_blade();                          // force blade off if feed limit is reached. This is a safety feature to prevent the blade from running when the feed is at the end of travel.
 }
 
 /**
@@ -597,8 +593,9 @@ void Motion::cutting_runner(void * args)
             // enable PWM to drive the stepper
 
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
-    digitalWrite(DIR_PIN, HIGH);         // set direction towards the blade
+    digitalWrite(DIR_PIN, HIGH);        // set direction towards the blade
     digitalWrite(EN_PIN, LOW);          // enable stepper
+    vTaskDelay(pdMS_TO_TICKS(10));        // allow for limit interrupt to quiesce
     while(_this->_feed_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
@@ -654,6 +651,7 @@ void Motion::cutting_runner(void * args)
     if(r != ESP_OK) Logger.Error_f(F("PWM channel pausing failed with 0x%04X"), r);
     _this->_frequency = 0;
 
+    _this->deactivate_blade();   
     _args->callback();
     if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
     {

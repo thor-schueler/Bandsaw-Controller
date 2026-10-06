@@ -111,9 +111,6 @@ class Controller
 
     private:
 
-        void switch_on(uint8_t gpio, const char* command);
-        void switch_off(uint8_t gpio, const char* command);
-
         /**
          * @brief toggles a temporary button off.
          * 
