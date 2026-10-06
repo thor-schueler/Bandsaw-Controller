@@ -51,6 +51,14 @@
 #define FEED_X_OFFSET 18
 #define FEED_Y_OFFSET 42
 
+#define STATUS_X 79
+#define STATUS_Y 281
+#define ALERTS_BADGE_W 50
+#define ALERTS_BADGE_H 27
+#define ALERTS_PAGE_SIZE 6
+#define ALERTS_DETAIL_H 100
+#define TOASTTIMEOUT 3'000'000
+
 #pragma region asset pointers
 extern const uint16_t background[] PROGMEM;
 extern const uint16_t ems[] PROGMEM;
@@ -90,13 +98,33 @@ extern const uint16_t D8[] PROGMEM;
 extern const uint16_t D9[] PROGMEM;
 extern const uint16_t DDot[] PROGMEM;
 extern const uint16_t DIPM[] PROGMEM;
+extern const uint16_t alerts_active[] PROGMEM;
+extern const uint16_t alerts_inactive[] PROGMEM;
+extern const uint16_t alert_toast[] PROGMEM;
+extern const uint16_t alert_toast_inactive[] PROGMEM;
+extern const uint16_t alerts_controls[] PROGMEM;
+extern const uint16_t alerts_title[] PROGMEM;
+extern const uint16_t status[] PROGMEM;
+
 extern const size_t homing_title_size;
 extern const size_t homing_size;
 extern const size_t manual_feeding_title_size;
 extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 extern const size_t cutting_size;
+extern const size_t alerts_title_size;
+
+static constexpr uint16_t status_width = 401;
+static constexpr uint16_t status_height = 21;
 #pragma endregion
+
+typedef enum SCREENS 
+{
+  MAIN = 0,
+  ALERTS = 1,
+  SETTINGS = 2, 
+  EMS = 3
+} screens_t;
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -115,6 +143,12 @@ typedef struct {
   uint8_t gpio;
   bool enable;
 } touch_area_t;
+
+typedef struct
+{
+    touch_area_t* areas;
+    uint8_t count;
+} touch_screen_t;
 
 /**
  * @brief Type to represent the touch state
@@ -183,6 +217,40 @@ public:
      * 
      */
     void draw_canvas();
+
+    /**
+     * @brief Clears the alerts cache
+     */
+    void clear_alerts();
+
+    /**
+     * @brief Adds an alert to alerts list. There is a maximum of 20 alerts. If the list is full
+     * the last alert will be dropped.
+     * 
+     * @param s - Alert to add
+     */
+    void add_alert(String s);
+
+    /**
+     * @brief Displays an alert toast in the UI
+     * 
+     * @param alert - Alert to display
+     * @param add_to_alert - Whether to add the alert to alerts list. Defaults to True.
+     * @param timeout - timeout for the toast in seconds. Defaults to 3'000'000. 
+     */
+    void show_toast(String alert, bool add_to_alert=true, uint32_t timeout=TOASTTIMEOUT);
+
+    /**
+     * @brief Hides the toast from the UI
+     * 
+     */
+    void hide_toast();
+
+    /**
+     * @brief Draws the taskbar.
+     * 
+     */
+    void draw_status_bar();
 
     /**
      * @brief Set the icon and background for a button
@@ -299,6 +367,26 @@ public:
      */
     inline void cutting_complete() { if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; };
 
+    /**
+     * @brief Toggles the alert screen on an off.
+     * 
+     */
+    void toggle_alerts();
+
+    /**
+     * @brief Pages the alerts page forward or backward
+     * 
+     * @param forward - true to page forward, false to page backward
+     */
+    void page_alerts(bool forward);
+
+    /**
+     * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
+     * @param direction - the direction of the wheel movement.
+     * @param steps - the number of steps moved.
+     */
+    void process_wheel_movement(int direction, int steps);
+
   protected:
 
     /**
@@ -330,6 +418,20 @@ public:
      * @param args - pointer to task arguments
      */    
     static void cutting_chart_runner(void* args);
+
+    /**
+     * @brief Task function running the slide in for a toast. 
+     * 
+     * @param args - pointer to task arguments 
+     */
+    static void slide_toast_in(void *args);
+
+    /**
+     * @brief Runs the status of the badge icon
+     * 
+     * @param args - pointer to task arguments 
+     */
+    static void alerts_badge_runner(void *args);
 
     lgfx::Panel_ST7796 _panel;
     lgfx::Bus_SPI _bus;
@@ -478,6 +580,39 @@ public:
 
     #pragma endregion
 
+    #pragma region alert methods
+    /**
+     * @brief Truncates a string with an ellipsis until it fits into a certain space.
+     * 
+     * @param sprite - The sprite hosting the canvas to draw into
+     * @param text - The text to operate on 
+     * @param width - The width for the string to fit into
+     * @return String - the truncated string
+     */
+    String truncate_string(lgfx::LGFX_Sprite &sprite, const char* text, int width);
+
+    /**
+     * @brief Draws word wrapped text into the sprite
+     * 
+     * @param sprite - The sprite hosting the canvas to draw into
+     * @param text - The text to draw
+     * @param x - The x coordinate for the start
+     * @param y - The y coordinate for the end
+     * @param maxWidth - The width to fit the text into 
+     * 
+     * @remarks The method will not check for vertical overrun. Vertical overrung will simply be truncated.
+     */
+    void draw_wrapped_text(LGFX_Sprite& sprite, const char* text, int x, int y, int maxWidth);
+
+    /**
+     * @brief Writes the alerts to the display starting from the specified index.
+     * 
+     * @param start - The starting index of the alerts to display.
+     * @param size - The number of alerts to display.
+     * @param index - The index of the alert to highlight
+     */
+    void write_alerts(uint8_t start, uint8_t size, uint8_t index);
+    #pragma endregion
 
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;
@@ -485,12 +620,25 @@ public:
     volatile bool _fas_break = false;
     volatile bool _use_manual_feed_smoothing = false;
     volatile bool _cutting_chart_break = false;
+    volatile bool _toasting_break = false;
+    volatile bool _has_alerts = false;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
     TaskHandle_t _feed_animation = NULL;
     TaskHandle_t _cutting_chart = NULL;
+    TaskHandle_t _toastRunner = NULL;
+    TaskHandle_t _alertBadgeRunner = NULL;
+    esp_timer_handle_t toast_timer = NULL;
     volatile SemaphoreHandle_t _display_mutex;
+    screens_t _screen = SCREENS::MAIN;
+};
+
+struct Toast_Task_Args
+{
+    Display* self;
+    LGFX_Sprite* toast_sprite;
+    uint32_t timeout;
 };
 
 struct Cut_TaskArgs

@@ -888,12 +888,8 @@ void Motion::process_wheel_movement(int direction, int steps)
 { 
     static int previous_direction = 0;
     if(this->_state == MOTION_STATE::SHUTDOWN) return;
-
-    if(this->_state == MOTION_STATE::SETTINGS) 
-    {
-        // TODO - whatever we need to do during settings management. 
-        Logger.Info_f(F("Wheel change: position %d, direction %d"), steps, direction);
-    }
+    if(this->_state == MOTION_STATE::LOCKED) return;
+        // Motion evaluation during locked state (settings, alerts) is done by the didplay, so we do nothing here....
 
     if(this->_state == MOTION_STATE::HOMING || this->_state == MOTION_STATE::FEEDING)
     {
@@ -906,7 +902,7 @@ void Motion::process_wheel_movement(int direction, int steps)
         {
             this->_frequency.store(f);
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, f);
-            Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
+            //Logger.Info_f(F("... Manual pulse %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
         } 
     }
     
@@ -949,7 +945,7 @@ void Motion::process_wheel_movement(int direction, int steps)
                 {
                     this->_manual_frequency.store(tf);
                     ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, this->_manual_frequency.load());
-                    Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
+                    //Logger.Info_f(F("... Manual feed frequency changed to %u"), tf);
                 }
             }
         }

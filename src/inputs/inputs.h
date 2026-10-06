@@ -47,6 +47,13 @@ typedef struct input_entry
 
 } input_entry_t;
 
+typedef struct inputs 
+{
+    input_entry_t* inputs;
+    uint8_t max_inputs;
+    uint8_t max_phys_inputs;
+} inputs_t;
+
 
 /**
  * @brief This class is repsonsible for watching and processing the various inputs of the bandsaw 
@@ -70,11 +77,12 @@ class Inputs {
     ~Inputs();
 
     /**
-     * @brief Get the inputs object
+     * @brief Get the inputs object for a screen.
+     * @param screen - the screen for which to retrieve the inputs.
      * 
      * @return reference to a std::array of input_entry_t types.  
      */
-    static std::array<input_entry_t, 16>& get_inputs();
+    static inputs_t& get_inputs(uint8_t screen);
 
     /**
      * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
@@ -103,33 +111,33 @@ class Inputs {
     /**
      * @brief Registers a command for a specific GPIO
      * 
+     * @param screen - the screen index for which to register the command 
      * @param gpio  - the gpio that will invoke the command 
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
      * @param exit  - the function to call when the GPIO goes inactuve (high). NULL if no function should be called.
      * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause);
+    void register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, bool allow_pause);
 
 
     /**
      * @brief Registers a command for a specific GPIO
      * 
+     * @param screen - the screen index for which to register the command 
      * @param gpio  - the gpio that will invoke the command 
      * @param entry - the function to call when the GPIO goes active (low). NULL if no function should be called.
      * @param exit  - the finction to call when the GPIO goes inactuve (high). NULL if no function should be called.
      * @param cmd   - the title of the command. 
      * @param allow_pause - the command monitoring can be paused for this command
      */
-    void register_command(uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
+    void register_command(uint8_t screen, uint8_t gpio, std::function<void(uint8_t gpio, const char*)> entry, std::function<void(uint8_t gpio, const char*)> exit, String cmd, bool allow_pause);
 
     /**
-     * @brief Sets the callback function for wheel events.
+     * @brief Registers a callback function for wheel events. There can be multiple callbacks registered.
      * @param callback - the function to call when wheel events occur. Callback is called with two parameters: 
      * the direction of the wheel movement and the number of steps moved.
      */
-    void register_wheel_callback(std::function<void(int, int)> callback) { this->_wheel_callback = callback; };
-
-    void test() {};
+    void register_wheel_callback(const std::function<void(int, int)>& callback) { this->_wheel_callbacks.push_back(callback); };
 
     /**
      * @brief Reads a specific GPIO on the PCF8575 extender.
@@ -173,7 +181,7 @@ class Inputs {
     static void IRAM_ATTR handle_encoder_change(void* arg);    
 
 
-    std::function<void(int, int)> _wheel_callback = NULL;
+    std::vector<std::function<void(int, int)>> _wheel_callbacks;
     inline static PCF8575* _pcf8575 = NULL;
     inline static TaskHandle_t _extendedGPIOWatcher = NULL;
     TaskHandle_t _wheelRunner;
