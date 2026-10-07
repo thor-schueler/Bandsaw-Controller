@@ -72,8 +72,8 @@ void Display::show_toast(String alert, bool add_to_alert, uint32_t timeout)
     if(this->_toastRunner != NULL)
     {
         /// remove toast runner task and clean up before starting a new one.
-        this->_toasting_break = true;
         if(esp_timer_is_active(this->toast_timer)) esp_timer_stop(this->toast_timer);
+        this->_toasting_break = true;
         while(this->_toastRunner != NULL) vTaskDelay(1);
         this->hide_toast();
     }

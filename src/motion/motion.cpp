@@ -698,6 +698,8 @@ void Motion::cutting_runner(void * args)
         vTaskDelay(50);                                     // delay 100ms. There is no risk here as the interrupt handler will
                                                             // disable the stepper as soon as the home limit has been hit. 
         i = (i + 1) % N;
+    
+        Logger.Info_f("Cutting task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
     }
     digitalWrite(EN_PIN, HIGH);                             // disable the stepper in case we terminated due to EMS or user termination.
                                                             // reset TMC2209 stall guard configuration.
@@ -741,6 +743,7 @@ void Motion::cutting_runner(void * args)
             // toggle out of feeding mode after cutting is complete.
     }
     _this->_cutting_task = NULL;
+    Logger.Info_f("Cutting task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
     delete _args;
     vTaskDelete(NULL);
 }

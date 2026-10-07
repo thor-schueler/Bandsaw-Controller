@@ -153,7 +153,7 @@ Display::~Display()
 void Display::begin() {
     Logger.Info(F("... Initializing display controller..."));
     Logger.Info(F("....Generating Mutexes"));
-    _display_mutex = xSemaphoreCreateBinary();  xSemaphoreGive(_display_mutex);
+    _display_mutex = xSemaphoreCreateMutex(); 
 
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
@@ -586,6 +586,7 @@ void Display::cutting_chart_runner(void* args)
     _this->reset_cutting_data();
     for(uint16_t counter=0;;counter++)
     {
+        Logger.Info_f("Cutting Display task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
         if(_this->_paused || _this->_cutting_chart_break) 
         {
             if(!_this->_paused)
@@ -623,5 +624,6 @@ void Display::cutting_chart_runner(void* args)
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->_cutting_chart_break = false;
     _this->_cutting_chart = NULL;
+    Logger.Info_f("Cutting Display task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
     vTaskDelete(NULL);
 }
