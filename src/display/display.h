@@ -17,7 +17,7 @@
 #define CS_TOUCH_PIN    4
 #define TOUCH_IRQ_PIN   22
 
-#define SPI_BUS_WRITE_FREQUENCY 40000000
+#define SPI_BUS_WRITE_FREQUENCY 20000000
 #define SPI_BUS_READ_FREQUENCY  4000000
 #define SPI_BUS_TOUCH_FREQUENCY 2000000
 
@@ -340,32 +340,40 @@ public:
      * running animations being stopped. New animations will not start. 
      * 
      */
-    inline void pause_tasks() { this->_paused = true; }; 
+    void pause_tasks() { this->_paused = true; }; 
 
     /**
      * @brief Resume task processing. This will result in touch being processed again and 
      * animations can now start. 
      * 
      */
-    inline void resume_tasks() { this->_paused = false; }; 
+    void resume_tasks() { this->_paused = false; }; 
 
     /**
      * @brief should be called when the homing is complete to terminate the homing animation.
-     * 
+     * @param toast - true to show a toast indicating that the homing is complete, false to not show a toast.
      */
-    inline void homing_complete() { if(this->_homing_animation != NULL) this->_homing_animation_break = true; };
+    void homing_complete(bool toast = true) 
+    { 
+      if(this->_homing_animation != NULL) this->_homing_animation_break = true; 
+      if(toast) this->show_toast(F("Homing completed successfully."), false);
+    };
 
     /**
      * @brief should be called when the feeding is complete to terminate the feeding animation.
      * 
      */
-    inline void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
+    void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
 
     /**
      * @brief should be called when the cutting with autofeed is complete to terminate the cutting chart.
-     * 
+     * @param toast - true to show a toast indicating that the cutting is complete, false to not show a toast.  
      */
-    inline void cutting_complete() { if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; };
+    void cutting_complete(bool toast = true) 
+    { 
+      if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; 
+      if(toast) this->show_toast(F("Automated cutting completed successfully."), false);
+    };
 
     /**
      * @brief Toggles the alert screen on an off.
@@ -578,6 +586,10 @@ public:
      */
     void reset_cutting_data();
 
+    /**
+     * @brief Calculates the maximum values in the data series for scaling
+     */
+    void calculate_data_max();
     #pragma endregion
 
     #pragma region alert methods
@@ -622,6 +634,7 @@ public:
     volatile bool _cutting_chart_break = false;
     volatile bool _toasting_break = false;
     volatile bool _has_alerts = false;
+    volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
     TaskHandle_t _fas_runner = NULL;
@@ -630,7 +643,6 @@ public:
     TaskHandle_t _toastRunner = NULL;
     TaskHandle_t _alertBadgeRunner = NULL;
     esp_timer_handle_t toast_timer = NULL;
-    volatile SemaphoreHandle_t _display_mutex;
     screens_t _screen = SCREENS::MAIN;
 };
 

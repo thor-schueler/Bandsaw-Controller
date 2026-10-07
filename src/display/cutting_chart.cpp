@@ -33,7 +33,7 @@ void Display::start_cutting_chart(std::function<uint32_t()> metrics_function)
 
     if(this->_cutting_chart != NULL) return;                        // animation taskis already running.
     Cut_TaskArgs *args = new Cut_TaskArgs{ this, metrics_function };
-    xTaskCreatePinnedToCore(cutting_chart_runner, "cuttingChartRunner", 2048, args, 1, &_cutting_chart, 1);
+    xTaskCreatePinnedToCore(cutting_chart_runner, "cuttingChartRunner", 2560, args, 1, &_cutting_chart, 1);
 }
 
 /**
@@ -70,55 +70,52 @@ void Display::draw_cutting_chart_area(LGFX_Sprite *sprite)
  */
 void Display::draw_cutting_chart(LGFX_Sprite *sprite)
 {
-    float factor = static_cast<float>(CUTTING_H - CUTTING_CHART_MARGIN*2 - CUTTING_CHART_OFFSET) / static_cast<float>(max_data.speed);
-    for(int i=1; i < CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN; i++)
+    float speed_factor = static_cast<float>(CUTTING_H - CUTTING_CHART_MARGIN*2 - CUTTING_CHART_OFFSET) / static_cast<float>(max_data.speed);
+    float smooth_factor = static_cast<float>(CUTTING_H - CUTTING_CHART_MARGIN*2 - CUTTING_CHART_OFFSET) / static_cast<float>(max_data.sg_smooth);
+    float raw_factor = static_cast<float>(CUTTING_H - CUTTING_CHART_MARGIN*2 - CUTTING_CHART_OFFSET) / static_cast<float>(max_data.sg_raw);
+    float d_factor = static_cast<float>(CUTTING_H - CUTTING_CHART_MARGIN*2 - CUTTING_CHART_OFFSET) / static_cast<float>(max_data.sg_d);
+    
+    for(uint8_t i=1; i < CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN; i++)
     {
-        int32_t y1 = CUTTING_H - CUTTING_CHART_MARGIN - CUTTING_CHART_OFFSET - 1 - (factor * data[i-1].speed);
-        int32_t y2 = CUTTING_H - CUTTING_CHART_MARGIN - CUTTING_CHART_OFFSET - 1 - (factor * data[i].speed);
-        if(factor * data[i].speed != 0 && factor * data[i-1].speed != 0)
+        int32_t y1 = CUTTING_H - CUTTING_CHART_MARGIN - CUTTING_CHART_OFFSET - 1 - (speed_factor * data[i-1].speed);
+        int32_t y2 = CUTTING_H - CUTTING_CHART_MARGIN - CUTTING_CHART_OFFSET - 1 - (speed_factor * data[i].speed);
+        if(speed_factor * data[i].speed != 0 && speed_factor * data[i-1].speed != 0)
         {
             sprite->drawLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i-1, y1 ,CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y2 , BORG_GREEN);
         }
         if(CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN - i-1 == counter)
         {
             sprite->fillCircle(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1, 2, LCARS_ORANGE);
-            sprite->drawFastVLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1,  factor * data[i-1].speed + 1, LCARS_ORANGE);
+            sprite->drawFastVLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1,  speed_factor * data[i-1].speed + 1, LCARS_ORANGE);
         }
 
-        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i-1].sg_raw);
-        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i].sg_raw);
-        if(factor * data[i].sg_raw != 0 && factor * data[i-1].sg_raw != 0)
+        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (raw_factor * data[i-1].sg_raw);
+        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (raw_factor * data[i].sg_raw);
+        if(raw_factor * data[i].sg_raw != 0 && raw_factor * data[i-1].sg_raw != 0)
         {    
             sprite->drawLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i-1, y1 ,CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y2 , LCARS_POLAR);
         }
 
-        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i-1].sg_d);
-        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i].sg_d);
-        if(factor * data[i].sg_d != 0 && factor * data[i-1].sg_d != 0)
+        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (d_factor * data[i-1].sg_d);
+        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (d_factor * data[i].sg_d);
+        if(d_factor * data[i].sg_d != 0 && d_factor * data[i-1].sg_d != 0)
         {    
             sprite->drawLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i-1, y1 ,CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y2 , LCARS_BLUE);
         }
 
-        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i-1].sg_smooth);
-        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (factor * data[i].sg_smooth);
-        if(factor * data[i].sg_smooth != 0 && factor * data[i-1].sg_smooth != 0)
+        y1 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (smooth_factor * data[i-1].sg_smooth);
+        y2 = CUTTING_H + CUTTING_GRID + CUTTING_H - CUTTING_CHART_MARGIN - 1 - CUTTING_CHART_OFFSET - (smooth_factor * data[i].sg_smooth);
+        if(smooth_factor * data[i].sg_smooth != 0 && smooth_factor * data[i-1].sg_smooth != 0)
         {    
             sprite->drawLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i-1, y1 ,CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y2 , LCARS_ORANGE);
         }
         if(CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN - i-1 == counter)
         {
             sprite->fillCircle(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1, 2, LCARS_ORANGE);
-            sprite->drawFastVLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1,  factor * data[i-1].sg_smooth + 1, LCARS_ORANGE);
+            sprite->drawFastVLine(CUTTING_CHART_MARGIN + CUTTING_CHART_OFFSET + i, y1,  smooth_factor * data[i-1].sg_smooth + 1, LCARS_ORANGE);
         }
     }
-
-    if(counter > 0){}
-    else
-    {
-        //sprite->drawCircle(HOMING_W-CHART_OFFSET-2*CHART_MARGIN, )
-    }
 }
-
 
 /**
  * @brief Adds a data point to the dataset, rotates the set by one. Oldest point is discarded
@@ -169,4 +166,19 @@ void Display::reset_cutting_data()
 {
     memset(data, 0, sizeof(data)); 
     counter = CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN;
+}
+
+/**
+ * @brief Calculates the maximum values in the data series for scaling
+ */
+void Display::calculate_data_max()
+{
+    max_data = { 1, 1, 1, 1};
+    for(uint8_t i=0; i<CUTTING_W - CUTTING_CHART_OFFSET - 2*CUTTING_CHART_MARGIN; i++)
+    {
+        if(data[i].sg_d > max_data.sg_d) max_data.sg_d = data[i].sg_d;
+        if(data[i].sg_raw > max_data.sg_raw) max_data.sg_raw = data[i].sg_raw;
+        if(data[i].sg_smooth > max_data.sg_smooth) max_data.sg_smooth = data[i].sg_smooth;
+        if(data[i].speed > max_data.speed) max_data.speed = data[i].speed;
+    }
 }

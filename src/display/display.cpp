@@ -490,11 +490,11 @@ void Display::homeing_animation_runner(void* args)
     LGFX_Sprite *_sprite = nullptr;
     Display *_this = reinterpret_cast<Display *>(args);
     Logger.Info(F("... Homing animation started."));
+    _this->_homing_animation_break = false;
     _sprite = new LGFX_Sprite(_this);
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
     _this->actions_overlay(true, homing, homing_size);
-    _this->_homing_animation_break = false;
     for(;;)
     {
         for(uint8_t frame = 0; frame < 60; frame++)
@@ -583,7 +583,7 @@ void Display::cutting_chart_runner(void* args)
     _this->actions_overlay(true, cutting, cutting_size, "", action_blue);
     _this->_cutting_chart_break = false;
     _this->reset_cutting_data();
-    for(;;)
+    for(uint16_t counter=0;;counter++)
     {
         if(_this->_paused || _this->_cutting_chart_break) 
         {
@@ -597,6 +597,7 @@ void Display::cutting_chart_runner(void* args)
 
         uint32_t d = _args->metrics_function();
 
+        if(counter % 20 == 0) _this->calculate_data_max();
         _this->add_data_point(d);
         _this->draw_cutting_chart_area(_sprite);
         _this->draw_cutting_chart(_sprite);
