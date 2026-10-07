@@ -330,6 +330,10 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
                 vTaskDelay(pdMS_TO_TICKS(200));
                 this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
             }
+            else
+            {
+                this->_display->suspend_cutting_chart(true);
+            }
         });
     }
     else if(this->_motion->get_state() == MOTION_STATE::FEEDING)

@@ -5,5 +5,5 @@ profiles:
     libraries:
       - "PCF8575 (2.0.1)"
       - "ArduinoJson (6.21.0)"
-      - "LovyanGFX (0.4.19)"
+      - "LovyanGFX (1.2.21)"
       - "TMCStepper (0.7.3)"

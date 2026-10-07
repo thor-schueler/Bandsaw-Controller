@@ -365,6 +365,15 @@ public:
      */
     void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
 
+
+    /**
+     * @brief Suspends the cutting chart. This is useful to freeze the chart on screen, especially after
+     * the cutting has completed. 
+     * 
+     * @param suspend - true to suspend (default), false to resume the chart. 
+     */
+    void suspend_cutting_chart(bool suspend = true) { this->_suspend_cutting_chart = suspend; }
+
     /**
      * @brief should be called when the cutting with autofeed is complete to terminate the cutting chart.
      * @param toast - true to show a toast indicating that the cutting is complete, false to not show a toast.  
@@ -634,6 +643,7 @@ public:
     volatile bool _cutting_chart_break = false;
     volatile bool _toasting_break = false;
     volatile bool _has_alerts = false;
+    volatile bool _suspend_cutting_chart = false;
     volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;

@@ -595,18 +595,27 @@ void Display::cutting_chart_runner(void* args)
             break;
         }
 
-        uint32_t d = _args->metrics_function();
-
-        if(counter % 20 == 0) _this->calculate_data_max();
-        _this->add_data_point(d);
-        _this->draw_cutting_chart_area(_sprite);
-        _this->draw_cutting_chart(_sprite);
-        if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
-        {     
-            _sprite->pushSprite(88, 95);
-            xSemaphoreGive(_this->_display_mutex);
+        if(!_this->_suspend_cutting_chart)
+        {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            continue;
+                // cutting chart is suspended but should remain on the screen....
         }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        else
+        {
+            uint32_t d = _args->metrics_function();
+
+            if(counter % 20 == 0) _this->calculate_data_max();
+            _this->add_data_point(d);
+            _this->draw_cutting_chart_area(_sprite);
+            _this->draw_cutting_chart(_sprite);
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            {     
+                _sprite->pushSprite(88, 95);
+                xSemaphoreGive(_this->_display_mutex);
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
     }
     _this->actions_overlay(false);
     Logger.Info(F("... Cutting chart task complete."));
