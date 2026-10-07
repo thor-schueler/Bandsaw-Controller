@@ -582,6 +582,7 @@ void Display::cutting_chart_runner(void* args)
     _this->set_workarea_title(cutting_title, cutting_title_size, "");
     _this->actions_overlay(true, cutting, cutting_size, "", action_blue);
     _this->_cutting_chart_break = false;
+    _this->_suspend_cutting_chart = false;
     _this->reset_cutting_data();
     for(uint16_t counter=0;;counter++)
     {
@@ -595,7 +596,7 @@ void Display::cutting_chart_runner(void* args)
             break;
         }
 
-        if(!_this->_suspend_cutting_chart)
+        if(_this->_suspend_cutting_chart)
         {
             vTaskDelay(pdMS_TO_TICKS(250));
             continue;
