@@ -699,7 +699,6 @@ void Motion::cutting_runner(void * args)
                                                             // disable the stepper as soon as the home limit has been hit. 
         i = (i + 1) % N;
     
-        Logger.Info_f("Cutting task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
     }
     digitalWrite(EN_PIN, HIGH);                             // disable the stepper in case we terminated due to EMS or user termination.
                                                             // reset TMC2209 stall guard configuration.
@@ -734,16 +733,25 @@ void Motion::cutting_runner(void * args)
     }
     else
     {    
-        if(i == 0) { vTaskDelay(pdMS_TO_TICKS(1000)); Logger.Info(F("...   Carriage already at feed limit.")); }
-        if(i > 0) Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
-        Logger.Info(F("...   Cutting task complete."));
-        _args->callback(false);
-        _this->_state = MOTION_STATE::FEEDING;
+        if(i == 0) 
+        { 
+            vTaskDelay(pdMS_TO_TICKS(1000)); 
+            Logger.Info(F("...   Carriage already at feed limit.")); 
+            _args->callback(true);
+            _this->_state = MOTION_STATE::IDLE;
+        }
+        else
+        {
+             Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
+            _args->callback(false);
+            _this->_state = MOTION_STATE::FEEDING;
             // retain feeding state to retain the display annimation and force the user to 
             // toggle out of feeding mode after cutting is complete.
+        }
+        Logger.Info(F("...   Cutting task complete."));    
     }
     _this->_cutting_task = NULL;
-    Logger.Info_f("Cutting task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
+    heap_caps_check_integrity_all(true);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -767,6 +775,7 @@ void Motion::manual_feed_runner(void* args)
 
     Motion* _this = static_cast<Motion*>(args);
     Logger.Info(F("... Start manual feed runner task"));
+    _this->limit_isr(_this);
     for(;;)
     {
         uint64_t now_us = esp_timer_get_time();
@@ -795,7 +804,7 @@ void Motion::manual_feed_runner(void* args)
         // 
         // Start motion
         //
-        if(!running && abs(balance) > DEAD_BAND)
+        if(!running && abs(balance) > DEAD_BAND && _this->can_feed(desired_direction))
         {
             if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task == NULL) xTaskCreate(manual_speed_monitor, "Manual Speed Monitoring Task", 2048, _this, 1, &_this->_manual_speed_task);
             digitalWrite(DIR_PIN, desired_direction);
@@ -839,7 +848,7 @@ void Motion::manual_feed_runner(void* args)
             // Evaluate Stop hystereis
             //
             balance = _this->_step_balance.load();
-            if(abs(balance) < DEAD_BAND)
+            if(abs(balance) < DEAD_BAND || !_this->can_feed(direction))
             {
                 uint8_t c = 0;
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);

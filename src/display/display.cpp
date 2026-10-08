@@ -586,7 +586,6 @@ void Display::cutting_chart_runner(void* args)
     _this->reset_cutting_data();
     for(uint16_t counter=0;;counter++)
     {
-        Logger.Info_f("Cutting Display task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
         if(_this->_paused || _this->_cutting_chart_break) 
         {
             if(!_this->_paused)
@@ -599,7 +598,7 @@ void Display::cutting_chart_runner(void* args)
 
         if(_this->_suspend_cutting_chart)
         {
-            vTaskDelay(pdMS_TO_TICKS(250));
+            vTaskDelay(pdMS_TO_TICKS(50));
             continue;
                 // cutting chart is suspended but should remain on the screen....
         }
@@ -624,6 +623,6 @@ void Display::cutting_chart_runner(void* args)
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->_cutting_chart_break = false;
     _this->_cutting_chart = NULL;
-    Logger.Info_f("Cutting Display task: Stack watermark=%u", uxTaskGetStackHighWaterMark(NULL));
+    heap_caps_check_integrity_all(true);
     vTaskDelete(NULL);
 }

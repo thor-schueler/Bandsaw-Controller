@@ -260,6 +260,33 @@ class Motion
          */
         void unlock() { this->_state = MOTION_STATE::IDLE; }
 
+        /**
+         * @brief Reports if the carriage is at the home limit. 
+         * @return true if at home limit, false otherwise
+         */
+        bool is_home() { return !digitalRead(LIMIT_1_PIN); }
+
+        /**
+         * @brief Reports if the carriage is at the feed limit. 
+         * @return true if at feed limit, false otherwise
+         */
+        bool is_feed_limit() { return !digitalRead(LIMIT_2_PIN); }
+
+        /**
+         * @brief Deterimes if feed is possible in a given direction
+         * @param direction - Desired direction. False towards home, True towards the blade
+         * @return True if feeding is allowed, false if not.
+         */
+        bool can_feed(bool direction) 
+        {
+            // diretion is low towards home and high towards the blade
+            // LIMIT_PIN_1 is home, active low
+            // LIMIT_PIN_2 is feed limit, active low
+            if(!direction && digitalRead(LIMIT_1_PIN)) return true;
+            if(direction && digitalRead(LIMIT_2_PIN)) return true;
+            return false;
+        }
+
     protected:
 
         /**

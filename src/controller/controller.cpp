@@ -324,7 +324,16 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
             this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->get_blade_status() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
             if(user_initiated)
             {
-                this->_display->cutting_complete(); 
+                if(this->_motion->is_feed_limit())
+                {
+                    // feed was engaged at limit, otherwise we would not be in this branch. 
+                    this->_display->show_toast("Cannot engage feeding when already at feed limit.");
+                    this->_display->cutting_complete(false);
+                }
+                else
+                {
+                    this->_display->cutting_complete(); 
+                }
                 this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
                 this->_display->set_workarea_title(nullptr, 0, "");
                 vTaskDelay(pdMS_TO_TICKS(200));
