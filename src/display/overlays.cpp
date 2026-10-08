@@ -20,7 +20,12 @@ void Display::ems_overlay(bool active)
     {
         this->_screen = SCREENS::EMS;
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-        {         
+        {  
+            // reinitialize display to deal with any EMI state corruption. 
+            this->init();
+            this->setRotation(1);           // Landscape
+            this->fillScreen(TFT_BLACK);
+
             this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)ems);
             xSemaphoreGive(this->_display_mutex);
         } 

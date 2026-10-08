@@ -157,6 +157,12 @@ class Motion
         blade_state_t deactivate_blade();
 
         /**
+         * @brief Sets a callback function to be called when the blade is stopped due to safety criteria
+         * @param callback - the callback function to be called when the blade is stopped due to safety criteria
+         */
+        void set_blade_safety_stop_callback(std::function<void()> callback) { this->_blade_safetry_stop_callback = callback; }
+
+        /**
          * @brief Manages the air blast solenoid based on the switch state
          * 
          * @param gpio_on - the state of the always on switch
@@ -194,14 +200,14 @@ class Motion
          * 
          * @param complete - function to call when the homing is complete.
          */
-        void home(std::function<void()> complete);
+        void home(std::function<void(bool)> complete);
 
         /**
          * @brief Starts the cutting and feeding sequence
          * 
          * @param complete - function to call when the homing is complete.
          */
-        void feed(std::function<void()> complete);
+        void feed(std::function<void(bool)> complete);
 
         /**
          * @brief Gets the current state of the motion object
@@ -254,6 +260,33 @@ class Motion
          */
         void unlock() { this->_state = MOTION_STATE::IDLE; }
 
+        /**
+         * @brief Reports if the carriage is at the home limit. 
+         * @return true if at home limit, false otherwise
+         */
+        bool is_home() { return !digitalRead(LIMIT_1_PIN); }
+
+        /**
+         * @brief Reports if the carriage is at the feed limit. 
+         * @return true if at feed limit, false otherwise
+         */
+        bool is_feed_limit() { return !digitalRead(LIMIT_2_PIN); }
+
+        /**
+         * @brief Deterimes if feed is possible in a given direction
+         * @param direction - Desired direction. False towards home, True towards the blade
+         * @return True if feeding is allowed, false if not.
+         */
+        bool can_feed(bool direction) 
+        {
+            // diretion is low towards home and high towards the blade
+            // LIMIT_PIN_1 is home, active low
+            // LIMIT_PIN_2 is feed limit, active low
+            if(!direction && digitalRead(LIMIT_1_PIN)) return true;
+            if(direction && digitalRead(LIMIT_2_PIN)) return true;
+            return false;
+        }
+
     protected:
 
         /**
@@ -298,6 +331,14 @@ class Motion
          */
         static void blade_monitor(void * args);
 
+        /**
+         * @brief Task function monitoring the blade state with respect to end stop action and 
+         * other situations that might require a stop
+         * 
+         * @param args - task arguments
+         */
+        static void blade_safety_monitor(void * args);
+
         /** 
          * @brief Monitors the feed speed in manual feeding mode.
          * 
@@ -308,12 +349,17 @@ class Motion
 
     private:
 
+        /**
+         * @brief Checks if the blade is allowed to run based on safety criteria
+         * @return true if the blade is allowed to run, false otherwise
+         */
+        bool is_blade_allowed_to_run();
+
         HardwareSerial* _tmc_serial = nullptr;
         TMC2209Stepper* _tmc_driver = nullptr;
         std::atomic<uint16_t> _steps_taken{0};
         std::atomic<int32_t> _step_balance{0};
         std::atomic<uint16_t> _manual_frequency{800};
-
         std::atomic<int64_t> _time_stamp = esp_timer_get_time();
         std::atomic<uint16_t> _frequency{0};
         
@@ -326,6 +372,7 @@ class Motion
         volatile bool _stall_alert = false;
         volatile float _manual_speed = 0;        
         volatile uint32_t _last_wheel_click = 0;
+        volatile bool _blade_stop_requested = false;
         uint32_t _cutting_metric = 0;
 
         volatile motion_state_t _state = MOTION_STATE::IDLE;
@@ -336,13 +383,16 @@ class Motion
         TaskHandle_t _manual_feed_task = NULL;
         TaskHandle_t _manual_speed_task = NULL;
         TaskHandle_t _blade_task = NULL;
+        TaskHandle_t _blade_safety_task = NULL;
         TaskHandle_t _cutting_task = NULL;
+
+        std::function<void()> _blade_safetry_stop_callback = nullptr;
 };
 
 struct TaskArgs
 {
     Motion* self;
-    std::function<void()> callback;
+    std::function<void(bool)> callback;
 };
 
 struct BladeTaskArgs

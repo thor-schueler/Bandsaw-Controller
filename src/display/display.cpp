@@ -153,7 +153,7 @@ Display::~Display()
 void Display::begin() {
     Logger.Info(F("... Initializing display controller..."));
     Logger.Info(F("....Generating Mutexes"));
-    _display_mutex = xSemaphoreCreateBinary();  xSemaphoreGive(_display_mutex);
+    _display_mutex = xSemaphoreCreateMutex(); 
 
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
@@ -490,11 +490,11 @@ void Display::homeing_animation_runner(void* args)
     LGFX_Sprite *_sprite = nullptr;
     Display *_this = reinterpret_cast<Display *>(args);
     Logger.Info(F("... Homing animation started."));
+    _this->_homing_animation_break = false;
     _sprite = new LGFX_Sprite(_this);
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
     _this->actions_overlay(true, homing, homing_size);
-    _this->_homing_animation_break = false;
     for(;;)
     {
         for(uint8_t frame = 0; frame < 60; frame++)
@@ -582,8 +582,9 @@ void Display::cutting_chart_runner(void* args)
     _this->set_workarea_title(cutting_title, cutting_title_size, "");
     _this->actions_overlay(true, cutting, cutting_size, "", action_blue);
     _this->_cutting_chart_break = false;
+    _this->_suspend_cutting_chart = false;
     _this->reset_cutting_data();
-    for(;;)
+    for(uint16_t counter=0;;counter++)
     {
         if(_this->_paused || _this->_cutting_chart_break) 
         {
@@ -595,22 +596,33 @@ void Display::cutting_chart_runner(void* args)
             break;
         }
 
-        uint32_t d = _args->metrics_function();
-
-        _this->add_data_point(d);
-        _this->draw_cutting_chart_area(_sprite);
-        _this->draw_cutting_chart(_sprite);
-        if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
-        {     
-            _sprite->pushSprite(88, 95);
-            xSemaphoreGive(_this->_display_mutex);
+        if(_this->_suspend_cutting_chart)
+        {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+                // cutting chart is suspended but should remain on the screen....
         }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        else
+        {
+            uint32_t d = _args->metrics_function();
+
+            if(counter % 20 == 0) _this->calculate_data_max();
+            _this->add_data_point(d);
+            _this->draw_cutting_chart_area(_sprite);
+            _this->draw_cutting_chart(_sprite);
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            {     
+                _sprite->pushSprite(88, 95);
+                xSemaphoreGive(_this->_display_mutex);
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
     }
     _this->actions_overlay(false);
     Logger.Info(F("... Cutting chart task complete."));
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->_cutting_chart_break = false;
     _this->_cutting_chart = NULL;
+    heap_caps_check_integrity_all(true);
     vTaskDelete(NULL);
 }

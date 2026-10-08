@@ -34,10 +34,12 @@ Motion::~Motion()
     if(this->_manual_speed_task != NULL) vTaskDelete(this->_manual_speed_task);
     if(this->_homing_task != NULL) vTaskDelete(this->_homing_task);
     if(this->_blade_task != NULL) vTaskDelete(this->_blade_task);
+    if(this->_blade_safety_task != NULL) vTaskDelete(this->_blade_safety_task);
     if(this->_cutting_task != NULL) vTaskDelete(this->_cutting_task);
     this->_manual_feed_task = NULL;
     this->_manual_speed_task = NULL;
     this->_blade_task = NULL;
+    this->_blade_safety_task = NULL;
     this->_homing_task = NULL;
     this->_cutting_task = NULL;
 
@@ -103,8 +105,9 @@ void Motion::begin()
     if(r != ESP_OK) Logger.Error_f(F("PWM pausing failed with 0x%04X"), r);
 
     // Task Registration
-    Logger.Info(F("...   Starting Manual Pulse Runner Task."));
+    Logger.Info(F("...   Starting motion management tasks."));
     xTaskCreatePinnedToCore(manual_feed_runner, "manualFeedRunner", 2048, this, 1, &_manual_feed_task, 1);
+    xTaskCreatePinnedToCore(blade_safety_monitor, "bladeSafetyMonitor", 2048, this, 5, &_blade_safety_task, 1);
 
     // Start driver serial
     Logger.Info(F("...   Starting TMC2209 driver."));
@@ -157,15 +160,13 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
     uint32_t currentTime = millis(); 
 
-    if ((currentTime - lastDebounceTime) < 250) return;                         // ignore bounces
+    if ((currentTime - lastDebounceTime) < 250) return;         // ignore bounces
 
     Motion *_this = reinterpret_cast<Motion *>(arg);  
-    bool hl = false;
-    bool fl = false;
-    bool dir = digitalRead(DIR_PIN);
+    bool hl = digitalRead(LIMIT_1_PIN);                         // home limit - active low
+    bool fl = digitalRead(LIMIT_2_PIN);                         // feed limit - active low
+    bool dir = digitalRead(DIR_PIN);                            // low - towards home, high - towards feed
 
-    hl = digitalRead(LIMIT_1_PIN);                              // active low
-    fl = digitalRead(LIMIT_2_PIN);                              // active low
     if((!hl && !dir) || (!fl && dir))
     {
         if(!hl && !dir) _this->_home_limit = true;
@@ -174,9 +175,23 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
     }
     if(hl) _this->_home_limit = false;
     if(fl) _this->_feed_limit = false;
-    if(!hl && !dir) _this->_home_limit = true;
-    if(!fl && dir) _this->_feed_limit = true;
-    if(_this->_home_limit || _this->_feed_limit) digitalWrite(EN_PIN, HIGH);  // disable Stepper
+    if(!fl) _this->_blade_stop_requested = true;                // force blade off if feed limit is reached. This is a safety feature to prevent the blade from running when the feed is at the end of travel.
+}
+
+/**
+ * @brief Checks if the blade is allowed to run based on safety criteria
+ * @return true if the blade is allowed to run, false otherwise
+ */
+bool Motion::is_blade_allowed_to_run()
+{
+    if(this->_ems_state == EMS_STATE::SHUTDOWN) return false;
+    if(this->_state == MOTION_STATE::HOMING) return false;
+    if(this->_state == MOTION_STATE::LOCKED) return false;
+    if(this->_state == MOTION_STATE::SHUTDOWN) return false;
+    if(this->_feed_limit) return false;
+    if(this->_blade_stop_requested) return false;
+    if(!digitalRead(LIMIT_2_PIN)) return false;
+    return true;
 }
 
 /**
@@ -199,6 +214,11 @@ blade_state_t Motion::get_blade_status()
  */
 blade_state_t Motion::activate_blade()
 {
+    if(!this->is_blade_allowed_to_run())
+    {
+        Logger.Info(F("... Received request to activate blade, but safety criteria not met. Ignore..."));
+        return BLADE_STATE::STOPPED;
+    }
     if(this->_ems_state == EMS_STATE::SHUTDOWN) 
     {
         digitalWrite(POWER_RELAY_PIN, HIGH);
@@ -247,7 +267,6 @@ void Motion::blade_monitor(void * args)
     {
         if(_this->_blade_job_should_exit) break;
         vTaskDelay(pdMS_TO_TICKS(50));
-
         if(_this->get_blade_status() == BLADE_STATE::STOPPED)
         {
             if(_this->_air_state == AIR_STATE::AUTO && digitalRead(SOLENOID_A_PIN) == HIGH)
@@ -280,6 +299,37 @@ void Motion::blade_monitor(void * args)
     delete _args;
     vTaskDelete(NULL);
 }
+
+/**
+ * @brief Task function monitoring the blade state with respect to end stop action and 
+ * other situations that might require a stop
+ * 
+ * @param args - task arguments
+ */
+void Motion::blade_safety_monitor(void * args)
+{
+    Motion* _this = static_cast<Motion*>(args);
+    Logger.Info(F("... Starting blade safety monitoring task"));
+    
+    for(;;)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        if(!_this->is_blade_allowed_to_run())
+        {
+            if(_this->get_blade_status() == BLADE_STATE::RUNNING)
+            {
+                _this->deactivate_blade();
+                if(_this->_blade_safetry_stop_callback != nullptr) _this->_blade_safetry_stop_callback();
+                Logger.Info(F("... Blade stop requested, deactivating blade."));
+            }
+            _this->_blade_stop_requested = false;
+        }
+    }
+    Logger.Info(F("... Blade safety monitoring task complete"));
+    _this->_blade_safety_task = NULL;
+    vTaskDelete(NULL);
+}
+
 
 /**
  * @brief Manages the air blast solenoid based on the switch state
@@ -432,6 +482,7 @@ ems_state_t Motion::manage_ems_state(uint8_t gpio_state)
         this->_frequency = 0;
         this->_ems_state = EMS_STATE::RUNNING;
         this->_state = MOTION_STATE::IDLE;
+        this->_blade_stop_requested = false;
         Logger.Info(F("... Emergency shutdown cleared"));
     }
     return this->_ems_state;
@@ -442,14 +493,16 @@ ems_state_t Motion::manage_ems_state(uint8_t gpio_state)
  * 
  * @param complete - function to call when the homing is complete.
  */
-void Motion::home(std::function<void()> complete)
+void Motion::home(std::function<void(bool)> complete)
 {
-    if(this->_homing_task != NULL)
+    if(this->_homing_task != NULL || complete == nullptr)
     {
         _job_should_exit = true;
+        if(_state == MOTION_STATE::HOMING) _state = MOTION_STATE::IDLE;
     }
     else
     {
+        _job_should_exit = false;
         TaskArgs* args = new TaskArgs { this, std::move(complete) };
         xTaskCreatePinnedToCore(homing_runner, "homingRunner", 2048, args, 1, &_homing_task, 1);
     }
@@ -460,14 +513,16 @@ void Motion::home(std::function<void()> complete)
  * 
  * @param complete - function to call when the homing is complete.
  */
-void Motion::feed(std::function<void()> complete)
+void Motion::feed(std::function<void(bool)> complete)
 {
-    if(this->_cutting_task != NULL)
+    if(this->_cutting_task != NULL || complete == nullptr)
     {
         _job_should_exit = true;
+        if(_state == MOTION_STATE::FEEDING) _state = MOTION_STATE::IDLE;
     }
     else
     {
+        _job_should_exit = false;
         TaskArgs* args = new TaskArgs { this, std::move(complete) };
         xTaskCreatePinnedToCore(cutting_runner, "cuttingRunner", 2048, args, 1, &_cutting_task, 1);
     }    
@@ -499,6 +554,7 @@ void Motion::homing_runner(void * args)
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
     digitalWrite(DIR_PIN, LOW);         // set direction towards home
     digitalWrite(EN_PIN, LOW);          // enable stepper
+    _this->limit_isr(_this);            // check if we are already home, if so, we can skip the homing sequence.
     while(_this->_home_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
@@ -531,22 +587,25 @@ void Motion::homing_runner(void * args)
     if(r != ESP_OK) Logger.Error_f(F("PWM channel pausing failed with 0x%04X"), r);
     _this->_frequency = 0;
 
-    _args->callback();
+
     if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
     {
+        _args->callback(false);
         Logger.Info(F("...   Homing task terminated due to EMS shutdown.")); 
         _this->_state = MOTION_STATE::SHUTDOWN;
     }
     else if(_this->_job_should_exit)
     {
+        _args->callback(true);
         Logger.Info(F("...   Homing task terminated due to user request.")); 
         _this->_job_should_exit = false;
         _this->_state = MOTION_STATE::IDLE;
     }
     else
     {    
-        if(i == 0) Logger.Info(F("...   Carriage already home."));
+        if(i == 0) { vTaskDelay(pdMS_TO_TICKS(1000)); Logger.Info(F("...   Carriage already home.")); }
         if(i > 0) Logger.Info(F("...   Homing successful, carriage home."));
+        _args->callback(false);
         Logger.Info(F("...   Homing task complete."));
         _this->_state = MOTION_STATE::IDLE;
     }
@@ -581,6 +640,7 @@ void Motion::cutting_runner(void * args)
 
     // configure TMC2209 for stall guard. This means we need to run at lower speed, but that is fine :)
     _this->_tmc_driver->en_spreadCycle(true);               // StallGuard ONLY works in SpreadCycle
+    _this->_tmc_driver->pwm_autoscale(false);               // Disable Stealthchop, we need StallGuard to work 
     _this->_tmc_driver->TCOOLTHRS(0xFFFFF);                 // Sets the minimum speed at which StallGuard and CoolStep are active. Range from 0...0xffff
     _this->_tmc_driver->SGTHRS(50);                         // Threshold value where the stall interrupt is called. The value is 0...255.
                                                             // 5-20    low sensitivity
@@ -597,8 +657,9 @@ void Motion::cutting_runner(void * args)
             // enable PWM to drive the stepper
 
     Logger.Info_f(F("...   PWM freq: %u"), ledc_get_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0));
-    digitalWrite(DIR_PIN, HIGH);         // set direction towards the blade
+    digitalWrite(DIR_PIN, HIGH);        // set direction towards the blade
     digitalWrite(EN_PIN, LOW);          // enable stepper
+    _this->limit_isr(_this);            // check if we are already at feed limit, if so, we can skip the feeding sequence.
     while(_this->_feed_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
@@ -619,13 +680,13 @@ void Motion::cutting_runner(void * args)
         uint32_t now = millis();
         if(last > 0) period = now - last;
         last = now;
-        sg = static_cast<uint8_t>(std::min<uint16_t>(255, _this->_tmc_driver->SG_RESULT()));
+        sg = static_cast<uint8_t>(std::min<uint16_t>(UINT8_MAX, _this->_tmc_driver->SG_RESULT()));
         sg_sum -= sg_a[i];
         sg_a[i] = sg;
         sg_sum += sg;
         sg_smooth = sg_sum / N;
         sg_d = abs((int16_t)sg_smooth - static_cast<int16_t>(((_this->_cutting_metric >> 16) & 0xFF)));
-        sg_d = std::min<uint16_t>(255, sg_d * 1000 / std::min<uint8_t>(UINT8_MAX, period)); 
+        sg_d = std::min<uint16_t>(UINT8_MAX, sg_d * 1000 / std::min<uint8_t>(UINT8_MAX, period)); 
 
         uint32_t r = 0;
         r |= s > 255.0f ? 255: static_cast<uint8_t>(s);
@@ -637,10 +698,12 @@ void Motion::cutting_runner(void * args)
         vTaskDelay(50);                                     // delay 100ms. There is no risk here as the interrupt handler will
                                                             // disable the stepper as soon as the home limit has been hit. 
         i = (i + 1) % N;
+    
     }
     digitalWrite(EN_PIN, HIGH);                             // disable the stepper in case we terminated due to EMS or user termination.
                                                             // reset TMC2209 stall guard configuration.
     _this->_tmc_driver->en_spreadCycle(false);              // StallGuard ONLY works in SpreadCycle
+    _this->_tmc_driver->pwm_autoscale(true);                // Enable Stealthchop
     _this->_tmc_driver->TCOOLTHRS(0);                       // Stallguard disabled at this time
     _this->_tmc_driver->SGTHRS(0);                          // Stallguard disabled at this time
     _this->_cutting_metric = 0;
@@ -654,26 +717,41 @@ void Motion::cutting_runner(void * args)
     if(r != ESP_OK) Logger.Error_f(F("PWM channel pausing failed with 0x%04X"), r);
     _this->_frequency = 0;
 
-    _args->callback();
+    _this->deactivate_blade();   
     if(_this->_ems_state == EMS_STATE::SHUTDOWN) 
     {
         Logger.Info(F("...   Cutting task terminated due to EMS shutdown.")); 
+        _args->callback(true);
         _this->_state = MOTION_STATE::SHUTDOWN;
     }
     else if(_this->_job_should_exit)
     {
         Logger.Info(F("...   Cutting task terminated due to user request.")); 
+        _args->callback(true);
         _this->_job_should_exit = false;
         _this->_state = MOTION_STATE::IDLE;
     }
     else
     {    
-        if(i == 0) Logger.Info(F("...   Carriage already at feed limit."));
-        if(i > 0) Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
-        Logger.Info(F("...   Homing task complete."));
-        _this->_state = MOTION_STATE::IDLE;
+        if(i == 0) 
+        { 
+            vTaskDelay(pdMS_TO_TICKS(1000)); 
+            Logger.Info(F("...   Carriage already at feed limit.")); 
+            _args->callback(true);
+            _this->_state = MOTION_STATE::IDLE;
+        }
+        else
+        {
+             Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
+            _args->callback(false);
+            _this->_state = MOTION_STATE::FEEDING;
+            // retain feeding state to retain the display annimation and force the user to 
+            // toggle out of feeding mode after cutting is complete.
+        }
+        Logger.Info(F("...   Cutting task complete."));    
     }
     _this->_cutting_task = NULL;
+    heap_caps_check_integrity_all(true);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -697,6 +775,7 @@ void Motion::manual_feed_runner(void* args)
 
     Motion* _this = static_cast<Motion*>(args);
     Logger.Info(F("... Start manual feed runner task"));
+    _this->limit_isr(_this);
     for(;;)
     {
         uint64_t now_us = esp_timer_get_time();
@@ -725,7 +804,7 @@ void Motion::manual_feed_runner(void* args)
         // 
         // Start motion
         //
-        if(!running && abs(balance) > DEAD_BAND)
+        if(!running && abs(balance) > DEAD_BAND && _this->can_feed(desired_direction))
         {
             if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task == NULL) xTaskCreate(manual_speed_monitor, "Manual Speed Monitoring Task", 2048, _this, 1, &_this->_manual_speed_task);
             digitalWrite(DIR_PIN, desired_direction);
@@ -769,7 +848,7 @@ void Motion::manual_feed_runner(void* args)
             // Evaluate Stop hystereis
             //
             balance = _this->_step_balance.load();
-            if(abs(balance) < DEAD_BAND)
+            if(abs(balance) < DEAD_BAND || !_this->can_feed(direction))
             {
                 uint8_t c = 0;
                 ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
