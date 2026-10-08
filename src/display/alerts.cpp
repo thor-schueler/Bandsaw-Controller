@@ -50,6 +50,7 @@ void Display::hide_toast()
         as.pushSprite(STATUS_X, STATUS_Y);
         xSemaphoreGive(this->_display_mutex);
     }
+    this->_has_toasts = false;
 }
 
 /**
@@ -72,11 +73,12 @@ void Display::show_toast(String alert, bool add_to_alert, uint32_t timeout)
     if(this->_toastRunner != NULL)
     {
         /// remove toast runner task and clean up before starting a new one.
-        if(esp_timer_is_active(this->toast_timer)) esp_timer_stop(this->toast_timer);
         this->_toasting_break = true;
         while(this->_toastRunner != NULL) vTaskDelay(1);
+        if(esp_timer_is_active(this->toast_timer)) esp_timer_stop(this->toast_timer);
         this->hide_toast();
     }
+    this->_has_toasts = true;
     Toast_Task_Args *args = new Toast_Task_Args{ .self = this, .toast_sprite = as, .timeout = timeout};
     xTaskCreate(slide_toast_in, "SlideToastIn", 2048, args, 5, &_toastRunner);
     if(this->_toastRunner == NULL)

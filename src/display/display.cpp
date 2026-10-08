@@ -144,6 +144,7 @@ Display::~Display()
     if(this->_cutting_chart != NULL) { vTaskDelete(this->_cutting_chart); this->_cutting_chart == NULL; }
     if(this->_toastRunner != NULL) { vTaskDelete(this->_toastRunner); this->_toastRunner == NULL; }
     if(this->_alertBadgeRunner != NULL) { vTaskDelete(this->_alertBadgeRunner); this->_alertBadgeRunner == NULL; }
+    if(this->_statusRunner != NULL) { vTaskDelete(this->_statusRunner); this->_statusRunner == NULL; }
 }
 
 /**
@@ -170,6 +171,7 @@ void Display::begin() {
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
     xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
+    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 2048, this, 1, &_statusRunner, 1);
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
                 {

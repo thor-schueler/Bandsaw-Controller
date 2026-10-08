@@ -46,6 +46,8 @@
 #define D7_WIDTH 17
 #define D8_WIDTH 18
 #define D9_WIDTH 18
+#define SD_HEIGHT 20
+#define SD_WIDTH 9
 #define DDOT_WIDTH 7
 #define DIPM_WIDTH 33
 #define FEED_X_OFFSET 18
@@ -58,6 +60,10 @@
 #define ALERTS_PAGE_SIZE 6
 #define ALERTS_DETAIL_H 100
 #define TOASTTIMEOUT 3'000'000
+
+#define STATUS_GLYPH_H 20
+#define STATUS_GLYPH_SPACE 10
+#define STATUS_W 320
 
 #pragma region asset pointers
 extern const uint16_t background[] PROGMEM;
@@ -96,6 +102,16 @@ extern const uint16_t D6[] PROGMEM;
 extern const uint16_t D7[] PROGMEM;
 extern const uint16_t D8[] PROGMEM;
 extern const uint16_t D9[] PROGMEM;
+extern const uint16_t SD0[] PROGMEM;
+extern const uint16_t SD1[] PROGMEM;
+extern const uint16_t SD2[] PROGMEM;
+extern const uint16_t SD3[] PROGMEM;
+extern const uint16_t SD4[] PROGMEM;
+extern const uint16_t SD5[] PROGMEM;
+extern const uint16_t SD6[] PROGMEM;
+extern const uint16_t SD7[] PROGMEM;
+extern const uint16_t SD8[] PROGMEM;
+extern const uint16_t SD9[] PROGMEM;
 extern const uint16_t DDot[] PROGMEM;
 extern const uint16_t DIPM[] PROGMEM;
 extern const uint16_t alerts_active[] PROGMEM;
@@ -105,6 +121,15 @@ extern const uint16_t alert_toast_inactive[] PROGMEM;
 extern const uint16_t alerts_controls[] PROGMEM;
 extern const uint16_t alerts_title[] PROGMEM;
 extern const uint16_t status[] PROGMEM;
+extern const uint16_t blade_running[] PROGMEM;
+extern const uint16_t feed_running[] PROGMEM;
+extern const uint16_t feed_running_screw[] PROGMEM;
+extern const uint16_t coolant_running[] PROGMEM;
+extern const uint16_t air_running[] PROGMEM;
+extern const uint16_t stall_margin[] PROGMEM;
+extern const uint16_t margin_stall_risk[] PROGMEM;
+extern const uint16_t margin_stall[] PROGMEM;
+extern const uint16_t margin_safe[] PROGMEM;
 
 extern const size_t homing_title_size;
 extern const size_t homing_size;
@@ -476,6 +501,34 @@ public:
     void fas_overlay(bool active, float speed);
 
     /**
+     * @brief Writes a number into a sprite using the LCARS front digits
+     * 
+     * @param sprite - reference to teh sprite
+     * @param number - number to write
+     * @param x - x coordinate to write at
+     * @param y - y coordinate to write at
+     * @param cw - character width
+     * @param ch - character height
+     * 
+     * @returns An unsigned integer containing the x coordinate of the end of the drawn number
+     */
+    uint16_t write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw);
+
+    /**
+     * @brief Writes a number into a sprite using the LCARS front digits
+     * 
+     * @param sprite - reference to teh sprite
+     * @param number - number to write
+     * @param x - x coordinate to write at
+     * @param y - y coordinate to write at
+     * @param cw - character width
+     * @param ch - character height
+     * 
+     * @returns An unsigned integer containing the x coordinate of the end of the drawn number
+     */
+    uint16_t write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw, uint8_t sw);
+
+    /**
      * @brief Draws the grid on hte background
      * 
      * @param sprite - Sprite to draw into
@@ -635,6 +688,67 @@ public:
     void write_alerts(uint8_t start, uint8_t size, uint8_t index);
     #pragma endregion
 
+    #pragma region status bar method   
+    /**
+     * @brief Draws the blade running indiator animation into the status bar.
+     * 
+     * @param sprite Sprite to draw into
+     * @param x - the x coordinate
+     * @param y - the y coordinate
+     * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+     */
+    uint16_t draw_blade_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y);
+
+    /**
+     * @brief Draws the lead screw running indiator animation into the status bar.
+     * 
+     * @param sprite Sprite to draw into
+     * @param x - the x coordinate
+     * @param y - the y coordinate
+     * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+     */
+    uint16_t draw_screw_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y);
+
+    /**
+     * @brief Draws the coolant running indiator animation into the status bar.
+     * 
+     * @param sprite Sprite to draw into
+     * @param x - the x coordinate
+     * @param y - the y coordinate
+     * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+     */
+    uint16_t draw_coolant_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y);
+
+    /**
+     * @brief Draws the air blast running indiator animation into the status bar.
+     * 
+     * @param sprite Sprite to draw into
+     * @param x - the x coordinate
+     * @param y - the y coordinate
+     * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+     */
+    uint16_t draw_air_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y);
+
+    /**
+     * @brief Draws the stall guard status into the status bar.
+     * 
+     * @param sprite Sprite to draw into
+     * @param x - the x coordinate
+     * @param y - the y coordinate
+     * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+     */
+    uint16_t draw_stallguard_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y);
+
+    /**
+     * @brief Status bar task function, respsonsible for drawing the taskbar and keeping it up-to-date
+     * 
+     * @param args task arguments
+     */
+    static void status_bar_runner(void *args);
+
+
+    #pragma endregion
+
     volatile bool _paused = false;
     volatile bool _homing_animation_break = false;
     volatile bool _feed_animation_break = false;
@@ -643,7 +757,9 @@ public:
     volatile bool _cutting_chart_break = false;
     volatile bool _toasting_break = false;
     volatile bool _has_alerts = false;
+    volatile bool _has_toasts = false;
     volatile bool _suspend_cutting_chart = false;
+    volatile uint16_t _status = 0b0001'1111'0010'1100;
     volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
@@ -652,6 +768,7 @@ public:
     TaskHandle_t _cutting_chart = NULL;
     TaskHandle_t _toastRunner = NULL;
     TaskHandle_t _alertBadgeRunner = NULL;
+    TaskHandle_t _statusRunner = NULL;
     esp_timer_handle_t toast_timer = NULL;
     screens_t _screen = SCREENS::MAIN;
 };
