@@ -32,6 +32,17 @@ Controller::~Controller()
 }
 
 /**
+ * @brief Logs the usage of the various task stacks to the console
+ * 
+ */
+void Controller::log_stack_usage()
+{
+    if(this->_display != nullptr) this->_display->log_stack_usage();
+    if(this->_motion != nullptr) this->_motion->log_stack_usage();
+    if(this->_inputs != nullptr) this->_inputs->log_stack_usage();
+}
+
+/**
  * @brief Start the controller execution flow, which sets up various tasks and starts various components.
  * 
  */

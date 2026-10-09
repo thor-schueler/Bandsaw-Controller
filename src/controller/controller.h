@@ -36,6 +36,12 @@ class Controller
          */
         void begin();
 
+        /**
+         * @brief Logs the usage of the various task stacks to the console
+         * 
+         */
+        void log_stack_usage();
+
     protected:
 
         /**

@@ -91,6 +91,17 @@ Inputs::~Inputs()
 }
 
 /**
+ * @brief Logs the usage of the various task stacks to the console
+ * 
+ */
+void Inputs::log_stack_usage()
+{
+    if(this->_extendedGPIOWatcher != NULL) Logger.Info_f(F("Inputs: Extended GPIO Watcher High Water Mark: %u"), uxTaskGetStackHighWaterMark(this->_extendedGPIOWatcher));
+    if(this->_wheelRunner != NULL)         Logger.Info_f(F("Inputs: Wheel runner High Water Mark:          %u"), uxTaskGetStackHighWaterMark(this->_wheelRunner));
+}
+
+
+/**
  * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
  * 
  */    

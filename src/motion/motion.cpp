@@ -49,6 +49,20 @@ Motion::~Motion()
 }
 
 /**
+ * @brief Logs the usage of the various task stacks to the console
+ * 
+ */
+void Motion::log_stack_usage()
+{
+    if(this->_homing_task != NULL)      Logger.Info_f(F("Motion: Homing runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_homing_task));
+    if(this->_manual_feed_task != NULL) Logger.Info_f(F("Motion: Manual feed runner High Water Mark:    %u"), uxTaskGetStackHighWaterMark(this->_manual_feed_task));
+    if(this->_manual_speed_task != NULL)Logger.Info_f(F("Motion: Manual speed task High Water Mark:     %u"), uxTaskGetStackHighWaterMark(this->_manual_speed_task));
+    if(this->_blade_task != NULL)       Logger.Info_f(F("Motion: Blade Monitor High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_blade_task));
+    if(this->_blade_safety_task != NULL)Logger.Info_f(F("Motion: Blade Safety High Water Mark:          %u"), uxTaskGetStackHighWaterMark(this->_blade_safety_task));
+    if(this->_cutting_task != NULL)     Logger.Info_f(F("Motion: Cutting Task High Water Mark:          %u"), uxTaskGetStackHighWaterMark(this->_cutting_task));
+}
+
+/**
  * @brief Initializes key objects and structures and starts the execution
  * 
  */

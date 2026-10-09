@@ -147,6 +147,12 @@ class Inputs {
      */
     uint8_t digitalReadEx(uint8_t gpio);
 
+    /**
+     * @brief Logs the usage of the various task stacks to the console
+     * 
+     */
+    void log_stack_usage();    
+
   private: 
 
     /**

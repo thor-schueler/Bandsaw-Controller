@@ -429,6 +429,12 @@ public:
      */
     void process_wheel_movement(int direction, int steps);
 
+    /**
+     * @brief Logs the usage of the various task stacks to the console
+     * 
+     */
+    void log_stack_usage();
+
   protected:
 
     /**
