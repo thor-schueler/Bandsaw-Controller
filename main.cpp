@@ -102,5 +102,6 @@ void setup()
  */
 void loop()
 {
-  vTaskDelay(100);
+  vTaskDelay(1000);
+  heap_caps_check_integrity_all(true);
 }

@@ -171,7 +171,8 @@ void Display::begin() {
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
     xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
-    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 2048, this, 1, &_statusRunner, 1);
+    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 1);
+    
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
                 {
@@ -215,7 +216,7 @@ void Display::draw_canvas()
         this->setTextSize(1);
 
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
-        this->pushImage(STATUS_X, STATUS_Y, status_width, status_height, (lgfx::rgb565_t*)status);
+        //this->pushImage(STATUS_X, STATUS_Y, status_width, status_height, (lgfx::rgb565_t*)status);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
         xSemaphoreGive(this->_display_mutex);

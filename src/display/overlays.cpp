@@ -88,35 +88,11 @@ void Display::fas_overlay(bool active, float speed)
     overlay.fillSprite(TFT_BLACK);
     if(active) 
     {
-        //char buf[16];
-        //uint8_t xx = 0;
         uint8_t x = FEED_X_OFFSET;
-        //snprintf(buf, sizeof(buf), speed < 10 ? "%.2f" : "%.1f", speed);
         overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
         overlay.setTextColor(LCARS_ORANGE, TFT_BLACK);
         overlay.fillRect(6, 31, 104, 50, TFT_BLACK);
 
-        //for(char* p = buf; *p; ++p)
-        //{
-        //    lgfx::rgb565_t* img = nullptr;
-        //    switch(*p)
-        //    {
-        //        case '0': img = (lgfx::rgb565_t*)D0; xx = D_WIDTH; break;
-        //        case '1': img = (lgfx::rgb565_t*)D1; xx = D_WIDTH; break;
-        //        case '2': img = (lgfx::rgb565_t*)D2; xx = D_WIDTH; break;
-        //        case '3': img = (lgfx::rgb565_t*)D3; xx = D_WIDTH; break;
-        //        case '4': img = (lgfx::rgb565_t*)D4; xx = D_WIDTH; break;
-        //        case '5': img = (lgfx::rgb565_t*)D5; xx = D_WIDTH; break;
-        //        case '6': img = (lgfx::rgb565_t*)D6; xx = D_WIDTH; break;
-        //        case '7': img = (lgfx::rgb565_t*)D7; xx = D_WIDTH; break;
-        //        case '8': img = (lgfx::rgb565_t*)D8; xx = D_WIDTH; break;
-        //        case '9': img = (lgfx::rgb565_t*)D9; xx = D_WIDTH; break;
-        //        case '.': img = (lgfx::rgb565_t*)DDot; xx = DDOT_WIDTH; break;
-        //    }
-        //    if(img == nullptr) continue;
-        //    overlay.pushImage(x, FEED_Y_OFFSET, xx, D_HEIGHT, img, TFT_BLACK);
-        //    x += xx - 2;
-        //}
         x = this->write_fnumber_into_sprite(overlay, speed, x, FEED_Y_OFFSET, D_WIDTH, D_HEIGHT, DDOT_WIDTH);
         overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
         if(this->_has_alerts) overlay.pushImage(62, 85, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
@@ -183,10 +159,10 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
  * 
  * @returns An unsigned integer containing the x coordinate of the end of the drawn number
  */
-uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw)
+uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch)
 {
     char __buf[16];
-    uint8_t __x = x;
+    uint16_t __x = x;
     snprintf(__buf, sizeof(__buf), "%u", number);
     for(char* __p = __buf; *__p; ++__p)
     {
@@ -206,7 +182,7 @@ uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number
         }
         if(__img == nullptr) continue;
         sprite.pushImage(__x, y, cw, ch, __img, TFT_BLACK);
-         __x += cw - (cw == SD_WIDTH ? 0 : 2);
+         __x += cw - (cw == SD_WIDTH ? 2 : 2);
     }
     return __x;
 }
@@ -223,11 +199,11 @@ uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number
  * 
  * @returns An unsigned integer containing the x coordinate of the end of the drawn number
  */
-uint16_t Display::write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw, uint8_t sw)
+uint16_t Display::write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch, uint8_t sw)
 {
     char __buf[16];
-    uint8_t __x = x;
-    uint8_t __xx = cw;
+    uint16_t __x = x;
+    uint16_t __xx = cw;
     snprintf(__buf, sizeof(__buf), number < 10 ? "%.2f" : "%.1f", number);
     for(char* __p = __buf; *__p; ++__p)
     {
@@ -248,7 +224,7 @@ uint16_t Display::write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, u
         }
         if(__img == nullptr) continue;
         sprite.pushImage(__x, y, __xx, ch, __img, TFT_BLACK);
-         __x += __x - (cw == SD_WIDTH ? 0 : 2);
+         __x += __xx - (cw == SD_WIDTH ? 0 : 2);
     }
     return __x;
 }
@@ -439,12 +415,12 @@ uint16_t Display::draw_stallguard_status(LGFX_Sprite &sprite, uint16_t x, uint16
 
     uint8_t sg = uint8_t(_status & 0x00FFu);
     sprite.pushImage(x, y, GLYPH_L_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)stall_margin);
-    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W, y, SD_HEIGHT, SD_WIDTH);
-
+    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W, y, SD_WIDTH, SD_HEIGHT);
+    x += STATUS_GLYPH_SPACE;
     if(_s == 0x1000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_safe);
     if(_s == 0x2000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall_risk);
     if(_s == 0x3000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall);
-    return x;
+    return x + GLYPH_W + STATUS_GLYPH_SPACE;
 }
 
 /**
@@ -476,7 +452,7 @@ void Display::status_bar_runner(void *args)
                 // no perations are running, use the status bar to display a simple message
                 sb.setTextColor(BORG_GREEN, TFT_BLACK);
                 sb.setFont(&fonts::Font2);
-                sb.drawString(F("Move the carriage using the wheel or engage autofeed to start"), 0, 0);
+                sb.drawString(F("Move the carriage using the wheel"), 0, 0);
                 has_static_image = true;
             }
             else
@@ -484,15 +460,20 @@ void Display::status_bar_runner(void *args)
                 uint16_t x = _this->draw_blade_running_status(sb, 0,0);
                 x = _this->draw_screw_running_status(sb, x, 0);
                 x = _this->draw_coolant_running_status(sb, x, 0);
-                x = _this->draw_air_running_status(sb, 0, 0);
+                x = _this->draw_air_running_status(sb, x, 0);
                 x = _this->draw_stallguard_status(sb, x, 0);
             }
-            sb.pushSprite(88, 281, TFT_BLACK);
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            { 
+                sb.pushSprite(88, 281, TFT_PLUM);
+                xSemaphoreGive(_this->_display_mutex);
+            }
         }
         else if(_this->_screen == SCREENS::EMS) continue;
         else if(_this->_screen == SCREENS::ALERTS) continue;
         else if(_this->_screen == SCREENS::SETTINGS) continue;
     }
+    sb.deleteSprite();
     _this->_statusRunner = NULL;
     vTaskDelete(NULL);
 }

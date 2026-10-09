@@ -512,7 +512,7 @@ public:
      * 
      * @returns An unsigned integer containing the x coordinate of the end of the drawn number
      */
-    uint16_t write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw);
+    uint16_t write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch);
 
     /**
      * @brief Writes a number into a sprite using the LCARS front digits
@@ -526,7 +526,7 @@ public:
      * 
      * @returns An unsigned integer containing the x coordinate of the end of the drawn number
      */
-    uint16_t write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t ch, uint8_t cw, uint8_t sw);
+    uint16_t write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch, uint8_t sw);
 
     /**
      * @brief Draws the grid on hte background
