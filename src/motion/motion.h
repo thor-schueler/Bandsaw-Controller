@@ -163,6 +163,33 @@ class Motion
         void set_blade_safety_stop_callback(std::function<void()> callback) { this->_blade_safetry_stop_callback = callback; }
 
         /**
+         * @brief Sets the status flag callback. This should be called whenever a motion function is toggled
+         * @param callback - callback to register. 
+         * 
+         * @remarks - The callback takes the folling arguments:
+         *              op - the operation to perform. SET=0 or CLEAR=1.
+         *              value - the bit mask for the flags. the bit mask has the following meaning:
+         *                  bit 1 - blade is running
+         *                  bit 2 - feed is engaged
+         *                  bit 3 - coolant is engaged
+         *                  bit 4 - airblast is engaged
+         *                  bit 5,6 - stall guard margins: 
+         *                      00 - stall guard off
+         *                      01 - stall guard margin safe
+         *                      10 - stall guard margin at risk
+         *                      11 - stall guard stall detected
+         */
+        void set_status_flag_callback(std::function<void(uint8_t op, uint8_t value)> callback) { this->_status_flag_callback = callback; }
+
+        /**
+         * @brief Sets the callback to report the value portion of the status value. The value portion contains 
+         * the stall guard value. 
+         * 
+         * @param callback - the callback to register.
+         */
+        void set_status_value_callback(std::function<void(uint8_t value)> callback) { this->_status_sg_value_callback = callback; }
+
+        /**
          * @brief Manages the air blast solenoid based on the switch state
          * 
          * @param gpio_on - the state of the always on switch
@@ -393,6 +420,8 @@ class Motion
         TaskHandle_t _cutting_task = NULL;
 
         std::function<void()> _blade_safetry_stop_callback = nullptr;
+        std::function<void(uint8_t op, uint8_t value)> _status_flag_callback = nullptr;
+        std::function<void(uint8_t value)> _status_sg_value_callback = nullptr;
 };
 
 struct TaskArgs

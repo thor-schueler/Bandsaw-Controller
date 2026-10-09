@@ -185,6 +185,11 @@ typedef enum TOUCH_TAB_STATE{
   WAITING
 } touch_tab_state_t;
 
+typedef enum STATUS_OP {
+  SET,
+  CLEAR
+} status_op_t;
+
 static constexpr uint8_t HOMING_W = 255;
 static constexpr uint8_t HOMING_H = 170;
 static constexpr uint8_t CUTTING_W = 255;
@@ -276,6 +281,34 @@ public:
      * 
      */
     void draw_status_bar();
+
+    /**
+     * @brief Sets or clears the flags of the status value.
+     * @param op - the operation to perform. SET or CLEAR.
+     * @param value - the bit mask for the flags
+     * @remark the bit mask has the following meaning:
+     *        bit 1 - blade is running
+     *        bit 2 - feed is engaged
+     *        bit 3 - coolant is engaged
+     *        bit 4 - airblast is engaged
+     *        bit 5,6 - stall guard magins: 
+     *            00 - stall guard off
+     *            01 - stall guard margin safe
+     *            10 - stall guard margin at risk
+     *            11 - stall guard stall detected
+     */
+    void set_status_flags(status_op_t op, uint8_t value) 
+    {
+      if(op == STATUS_OP::SET) this->_status |= ((uint16_t)value) << 8; else this->_status &= ~(((uint16_t)value) << 8);;
+    }
+
+    /**
+     * @brief Sets the value portion of the status value. The value portion contains 
+     * the stall guard value. 
+     * 
+     * @param value - value to set
+     */
+    void set_status_value(uint8_t value) { this->_status = (this->_status & 0xFF00) | value; }
 
     /**
      * @brief Set the icon and background for a button
@@ -765,7 +798,7 @@ public:
     volatile bool _has_alerts = false;
     volatile bool _has_toasts = false;
     volatile bool _suspend_cutting_chart = false;
-    volatile uint16_t _status = 0b0001'1111'0010'1100;
+    volatile uint16_t _status = 0x0000;
     volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;

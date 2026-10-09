@@ -244,7 +244,7 @@ uint16_t Display::draw_blade_running_status(LGFX_Sprite &sprite, uint16_t x, uin
     static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
 
     // evaluate whether the blade is running
-    if(this->_status & 0x0100 != 0x0100) 
+    if((this->_status & 0x0100) != 0x0100) 
     {   
         first = true;                                                           // blade running flag is not set, so reset the 
         return x;                                                               // index indicator and return original x
@@ -286,7 +286,7 @@ uint16_t Display::draw_screw_running_status(LGFX_Sprite &sprite, uint16_t x, uin
     static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
 
     // evaluate whether the blade is running
-    if(this->_status & 0x0200 != 0x0200) 
+    if((this->_status & 0x0200) != 0x0200) 
     {   
         first = true;                                                           // lead screw running flag is not set, so reset the 
         return x;                                                               // index indicator and return original x
@@ -328,7 +328,7 @@ uint16_t Display::draw_screw_running_status(LGFX_Sprite &sprite, uint16_t x, uin
     static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
 
     // evaluate whether the blade is running
-    if(this->_status & 0x0400 != 0x0400) 
+    if((this->_status & 0x0400) != 0x0400) 
     {   
         first = true;                                                           // lead screw running flag is not set, so reset the 
         return x;                                                               // index indicator and return original x
@@ -368,7 +368,7 @@ uint16_t Display::draw_air_running_status(LGFX_Sprite &sprite, uint16_t x, uint1
     static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
 
     // evaluate whether the blade is running
-    if(this->_status & 0x0800 != 0x0800) 
+    if((this->_status & 0x0800) != 0x0800) 
     {   
         first = true;                                                           // lead screw running flag is not set, so reset the 
         return x;                                                               // index indicator and return original x
@@ -432,6 +432,8 @@ void Display::status_bar_runner(void *args)
 {
     Display *_this = static_cast<Display *>(args);
     LGFX_Sprite sb(_this);
+
+    Logger.Info(F("... Status bar taks successfully started."));
     sb.setColorDepth(16);
     sb.createSprite(STATUS_W, STATUS_GLYPH_H);
     sb.fillSprite(TFT_BLACK);
@@ -447,7 +449,7 @@ void Display::status_bar_runner(void *args)
             if(has_static_image && _this->_status & 0xff00 == 0x0000) continue;     // don't draw if static image and no action
 
             sb.fillSprite(TFT_BLACK);
-            if(_this->_status & 0xff00 == 0x0000)
+            if((_this->_status & 0xff00) == 0x0000)
             {
                 // no perations are running, use the status bar to display a simple message
                 sb.setTextColor(BORG_GREEN, TFT_BLACK);
@@ -475,5 +477,6 @@ void Display::status_bar_runner(void *args)
     }
     sb.deleteSprite();
     _this->_statusRunner = NULL;
+    Logger.Info(F("... Status bar task complete."));
     vTaskDelete(NULL);
 }

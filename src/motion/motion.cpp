@@ -161,6 +161,11 @@ void IRAM_ATTR Motion::stall_isr(void * arg)
 {
     Motion *_this = reinterpret_cast<Motion *>(arg);
     _this->_stall_alert = true;
+    if(_this->_status_flag_callback != nullptr) 
+    {
+        _this->_status_flag_callback(1, 0x30);
+        _this->_status_flag_callback(0, 0x20);
+    }
 }
 
 /**
@@ -186,6 +191,7 @@ void IRAM_ATTR Motion::limit_isr(void * arg)
         if(!hl && !dir) _this->_home_limit = true;
         if(!fl && dir) _this->_feed_limit = true;
         digitalWrite(EN_PIN, HIGH);  // disable Stepper
+        if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x02);
     }
     if(hl) _this->_home_limit = false;
     if(fl) _this->_feed_limit = false;
@@ -283,26 +289,32 @@ void Motion::blade_monitor(void * args)
         vTaskDelay(pdMS_TO_TICKS(50));
         if(_this->get_blade_status() == BLADE_STATE::STOPPED)
         {
+            if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x01);
             if(_this->_air_state == AIR_STATE::AUTO && digitalRead(SOLENOID_A_PIN) == HIGH)
             {
+                if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x08);
                 digitalWrite(SOLENOID_A_PIN, LOW);
                 _args->callback(5, 2);
             } 
             if(_this->_coolant_state == COOLANT_STATE::AUTO && digitalRead(SOLENOID_B_PIN) == HIGH)
             {
+                if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x04);
                 digitalWrite(SOLENOID_B_PIN, LOW); 
                 _args->callback(7, 2);
             }
         }
         else 
         {
+            if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x01);
             if(_this->_air_state == AIR_STATE::AUTO && digitalRead(SOLENOID_A_PIN) == LOW) 
             {
+                if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x08);
                 digitalWrite(SOLENOID_A_PIN, HIGH);
                 _args->callback(5, 0);
             }
             if(_this->_coolant_state == COOLANT_STATE::AUTO && digitalRead(SOLENOID_B_PIN) == LOW)
             {   
+                if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x04);
                 digitalWrite(SOLENOID_B_PIN, HIGH);
                 _args->callback(7, 0);
             }  
@@ -366,7 +378,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
             this->_blade_job_should_exit = true;
             while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
         }
-
+        if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x08);
         this->_air_state = AIR_STATE::OFF;
     }
     if(gpio_on == HIGH)
@@ -384,6 +396,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
         }
         digitalWrite(SOLENOID_A_PIN, HIGH);
         Logger.Info(F("... Air blast solendoid switched on"));
+        if(this->_status_flag_callback != nullptr) this->_status_flag_callback(0, 0x08);
         this->_air_state = AIR_STATE::ON;
     }
     if(gpio_auto)
@@ -424,7 +437,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
             this->_blade_job_should_exit = true;
             while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
         }
-
+        if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x04);        
         this->_coolant_state = COOLANT_STATE::OFF;
     }
     if(gpio_on == HIGH)
@@ -444,6 +457,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
         
         digitalWrite(SOLENOID_B_PIN, HIGH);
         Logger.Info(F("... Coolant solendoid switched on"));
+        if(this->_status_flag_callback != nullptr) this->_status_flag_callback(0, 0x04);
         this->_coolant_state = COOLANT_STATE::ON;
     }
     if(gpio_auto)
@@ -569,6 +583,7 @@ void Motion::homing_runner(void * args)
     digitalWrite(DIR_PIN, LOW);         // set direction towards home
     digitalWrite(EN_PIN, LOW);          // enable stepper
     _this->limit_isr(_this);            // check if we are already home, if so, we can skip the homing sequence.
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x02);
     while(_this->_home_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
@@ -590,7 +605,8 @@ void Motion::homing_runner(void * args)
     } 
 
     digitalWrite(EN_PIN, HIGH);             // disable the stepper in case we terminated due to EMS or user termination.
-
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x02);
+                
 
     r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s < FREQUENCY_MIN ? FREQUENCY_MIN : _s); 
     if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
@@ -674,6 +690,7 @@ void Motion::cutting_runner(void * args)
     digitalWrite(DIR_PIN, HIGH);        // set direction towards the blade
     digitalWrite(EN_PIN, LOW);          // enable stepper
     _this->limit_isr(_this);            // check if we are already at feed limit, if so, we can skip the feeding sequence.
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x02);
     while(_this->_feed_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
@@ -708,6 +725,7 @@ void Motion::cutting_runner(void * args)
         r |= sg_smooth << 16;
         r |= static_cast<uint8_t>(sg_d) << 24;
         _this->_cutting_metric = r;
+        if(_this->_status_sg_value_callback != nullptr) _this->_status_sg_value_callback(sg_a[i]);
 
         vTaskDelay(50);                                     // delay 100ms. There is no risk here as the interrupt handler will
                                                             // disable the stepper as soon as the home limit has been hit. 
@@ -715,6 +733,7 @@ void Motion::cutting_runner(void * args)
     
     }
     digitalWrite(EN_PIN, HIGH);                             // disable the stepper in case we terminated due to EMS or user termination.
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x02);
                                                             // reset TMC2209 stall guard configuration.
     _this->_tmc_driver->en_spreadCycle(false);              // StallGuard ONLY works in SpreadCycle
     _this->_tmc_driver->pwm_autoscale(true);                // Enable Stealthchop
@@ -828,6 +847,7 @@ void Motion::manual_feed_runner(void* args)
             digitalWrite(EN_PIN, LOW);
             running = true;
             fractional_steps = 0.0f;
+            if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x02);
             Logger.Info(F("... Manual feed runner motion started"));
         }
 
@@ -877,6 +897,7 @@ void Motion::manual_feed_runner(void* args)
                 fractional_steps = 0.0f;
                 running = false;
                 last_stopped = millis();
+                if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x02);
                 Logger.Info(F("... Manual feed runner motion stopped"));
             }
             taskYIELD();

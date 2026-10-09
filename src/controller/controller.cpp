@@ -95,6 +95,12 @@ void Controller::begin()
             this->_display->actions_overlay(false);
         }
     });
+    this->_motion->set_status_flag_callback([this](uint8_t op, uint8_t value){
+        this->_display->set_status_flags((status_op_t)op, value);
+    });
+    this->_motion->set_status_value_callback([this](uint8_t value){
+        this->_display->set_status_value(value);
+    });
 
     Logger.Info(F("... Done."));
 }

@@ -156,11 +156,11 @@ void Display::log_stack_usage()
     if(this->_touchRunner != NULL)      Logger.Info_f(F("Display: Touch runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_touchRunner));
     if(this->_homing_animation != NULL) Logger.Info_f(F("Display: Homing runner High Water Mark:        %u"), uxTaskGetStackHighWaterMark(this->_homing_animation));
     if(this->_fas_runner != NULL)       Logger.Info_f(F("Display: Feed and Speed High Water Mark:       %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
-    if(this->_feed_animation != NULL)   Logger.Info_f(F("Display: Manual Feed Runner High Water Mark:   %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
-    if(this->_cutting_chart != NULL)    Logger.Info_f(F("Display: Cutting Chart Runner High Water Mark: %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
-    if(this->_toastRunner != NULL)      Logger.Info_f(F("Display: Toast Runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
-    if(this->_alertBadgeRunner != NULL) Logger.Info_f(F("Display: Alert Runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
-    if(this->_statusRunner != NULL)     Logger.Info_f(F("Display: Statusbar Runner High Water Mark:     %u"), uxTaskGetStackHighWaterMark(this->_fas_runner));
+    if(this->_feed_animation != NULL)   Logger.Info_f(F("Display: Manual Feed Runner High Water Mark:   %u"), uxTaskGetStackHighWaterMark(this->_feed_animation));
+    if(this->_cutting_chart != NULL)    Logger.Info_f(F("Display: Cutting Chart Runner High Water Mark: %u"), uxTaskGetStackHighWaterMark(this->_cutting_chart));
+    if(this->_toastRunner != NULL)      Logger.Info_f(F("Display: Toast Runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_toastRunner));
+    if(this->_alertBadgeRunner != NULL) Logger.Info_f(F("Display: Alert Runner High Water Mark:         %u"), uxTaskGetStackHighWaterMark(this->_alertBadgeRunner));
+    if(this->_statusRunner != NULL)     Logger.Info_f(F("Display: Statusbar Runner High Water Mark:     %u"), uxTaskGetStackHighWaterMark(this->_statusRunner));
 }
 
 /**
