@@ -167,7 +167,7 @@ void Display::alerts_badge_runner(void *args)
 void Display::toggle_alerts()
 {
     LGFX_Sprite controls(this);
-    if(!_screen == SCREENS::ALERTS)
+    if(_screen != SCREENS::ALERTS)
     {
         _has_alerts = false;
         _screen = SCREENS::ALERTS;

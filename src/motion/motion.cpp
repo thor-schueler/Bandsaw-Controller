@@ -161,8 +161,9 @@ void IRAM_ATTR Motion::stall_isr(void * arg)
 {
     Motion *_this = reinterpret_cast<Motion *>(arg);
     _this->_stall_alert = true;
-    if(_this->_status_flag_callback != nullptr) 
+    if(_this->_state == MOTION_STATE::FEEDING && _this->_status_flag_callback != nullptr) 
     {
+        // only set stallguard flags when stallguard is running during cutting motion. 
         _this->_status_flag_callback(1, 0x30);
         _this->_status_flag_callback(0, 0x20);
     }
@@ -176,7 +177,7 @@ void IRAM_ATTR Motion::stall_isr(void * arg)
 void IRAM_ATTR Motion::limit_isr(void * arg) 
 {
     // debounce limit switch for 250ms
-    volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
+    volatile static uint32_t lastDebounceTime = 0; // Last debounce time volatile 
     uint32_t currentTime = millis(); 
 
     if ((currentTime - lastDebounceTime) < 250) return;         // ignore bounces
@@ -350,6 +351,8 @@ void Motion::blade_safety_monitor(void * args)
             }
             _this->_blade_stop_requested = false;
         }
+        if(_this->get_blade_status() == BLADE_STATE::RUNNING && _this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x01);
+        if(_this->get_blade_status() == BLADE_STATE::STOPPED && _this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x01);
     }
     Logger.Info(F("... Blade safety monitoring task complete"));
     _this->_blade_safety_task = NULL;
@@ -678,7 +681,9 @@ void Motion::cutting_runner(void * args)
                                                             // 50-100  high
                                                             // 100+    very sensitive
                                                             // the threshold might need to be adjusted depending on the speed.
-    
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x30);
+                                                            // reset stallguard flags
+
     _this->_frequency = FREQUENCY_FEED_START;
     esp_err_t r = ledc_channel_config(&_channel_config);
     if(r != ESP_OK) Logger.Error_f(F("PWM channel configuration failed with 0x%04X"), r);
@@ -725,7 +730,7 @@ void Motion::cutting_runner(void * args)
         r |= sg_smooth << 16;
         r |= static_cast<uint8_t>(sg_d) << 24;
         _this->_cutting_metric = r;
-        if(_this->_status_sg_value_callback != nullptr) _this->_status_sg_value_callback(sg_a[i]);
+        if(_this->_status_sg_value_callback != nullptr) _this->_status_sg_value_callback(sg_smooth);
 
         vTaskDelay(50);                                     // delay 100ms. There is no risk here as the interrupt handler will
                                                             // disable the stepper as soon as the home limit has been hit. 
@@ -740,6 +745,8 @@ void Motion::cutting_runner(void * args)
     _this->_tmc_driver->TCOOLTHRS(0);                       // Stallguard disabled at this time
     _this->_tmc_driver->SGTHRS(0);                          // Stallguard disabled at this time
     _this->_cutting_metric = 0;
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x30);
+                                                            // reset stall guard flags
 
     r = ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _s < FREQUENCY_MIN ? FREQUENCY_MIN : _s); 
     if(r != ESP_OK) Logger.Error_f(F("PWM frequency configuration failed with 0x%04X"), r);
