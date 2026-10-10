@@ -104,6 +104,7 @@ void loop()
 {
   vTaskDelay(10000);
   heap_caps_check_integrity_all(true);
+  Logger.Info_f(F("Main: High Water Mark:                         %u"), uxTaskGetStackHighWaterMark(NULL));
   if(controller != nullptr) controller->log_stack_usage();
   vTaskDelay(50000);
 }

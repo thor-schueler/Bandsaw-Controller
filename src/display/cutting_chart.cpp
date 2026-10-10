@@ -32,7 +32,7 @@ void Display::start_cutting_chart(std::function<uint32_t()> metrics_function)
     if(first_time) { this->reset_cutting_data(); first_time = false; }
 
     if(this->_cutting_chart != NULL) return;                        // animation taskis already running.
-    Cut_TaskArgs *args = new Cut_TaskArgs{ this, metrics_function };
+    Cut_TaskArgs *args = new Cut_TaskArgs{ this, std::move(metrics_function) };
     xTaskCreatePinnedToCore(cutting_chart_runner, "cuttingChartRunner", 2560, args, 1, &_cutting_chart, 1);
 }
 
