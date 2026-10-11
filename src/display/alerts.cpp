@@ -50,6 +50,7 @@ void Display::hide_toast()
         as.pushSprite(STATUS_X, STATUS_Y);
         xSemaphoreGive(this->_display_mutex);
     }
+    this->_has_toasts = false;
 }
 
 /**
@@ -72,13 +73,14 @@ void Display::show_toast(String alert, bool add_to_alert, uint32_t timeout)
     if(this->_toastRunner != NULL)
     {
         /// remove toast runner task and clean up before starting a new one.
+        this->_toasting_stop_requested.store(true, std::memory_order_release);
+        this->request_task_stop(this->_toastRunner, this->_toasting_stop_requested, "toastRunner");
         if(esp_timer_is_active(this->toast_timer)) esp_timer_stop(this->toast_timer);
-        this->_toasting_break = true;
-        while(this->_toastRunner != NULL) vTaskDelay(1);
         this->hide_toast();
     }
+    this->_has_toasts.store(true, std::memory_order_release);
     Toast_Task_Args *args = new Toast_Task_Args{ .self = this, .toast_sprite = as, .timeout = timeout};
-    xTaskCreate(slide_toast_in, "SlideToastIn", 2048, args, 5, &_toastRunner);
+    xTaskCreate(slide_toast_in, "toastRunner", 2048, args, 5, &_toastRunner);
     if(this->_toastRunner == NULL)
     {
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
@@ -113,16 +115,16 @@ void Display::slide_toast_in(void *args)
             _s->pushSprite(i, STATUS_Y);
             xSemaphoreGive(_this->_display_mutex);
         }
-        if(_this->_toasting_break) break;
+        if(_this->_toasting_stop_requested.load(std::memory_order_acquire)) break;
         vTaskDelay(1);
     }
-    if(!_this->_toasting_break) esp_timer_start_once(_this->toast_timer, _args->timeout);
+    if(!_this->_toasting_stop_requested.load(std::memory_order_acquire)) esp_timer_start_once(_this->toast_timer, _args->timeout);
     
     _s->deleteSprite();
     delete _s;
     delete _args;
     _this->_toastRunner = NULL;
-    _this->_toasting_break = false;
+    _this->_toasting_stop_requested.store(false, std::memory_order_release);
     Logger.Info(F("... Toast task completed."));
     vTaskDelete(NULL);
 }
@@ -142,7 +144,7 @@ void Display::alerts_badge_runner(void *args)
     Logger.Info(F("... Alerts badge monitoring task started."));   
     for(;;)
     {
-        if(_this->_paused) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
+        if(_this->_paused.load(std::memory_order_acquire)) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
         if(_this->_has_alerts) s.pushImage(0, 0, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
         else s.pushImage(0, 0, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_inactive);
         if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
@@ -165,7 +167,7 @@ void Display::alerts_badge_runner(void *args)
 void Display::toggle_alerts()
 {
     LGFX_Sprite controls(this);
-    if(!_screen == SCREENS::ALERTS)
+    if(_screen != SCREENS::ALERTS)
     {
         _has_alerts = false;
         _screen = SCREENS::ALERTS;

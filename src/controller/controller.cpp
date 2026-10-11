@@ -32,6 +32,17 @@ Controller::~Controller()
 }
 
 /**
+ * @brief Logs the usage of the various task stacks to the console
+ * 
+ */
+void Controller::log_stack_usage()
+{
+    if(this->_display != nullptr) this->_display->log_stack_usage();
+    if(this->_motion != nullptr) this->_motion->log_stack_usage();
+    if(this->_inputs != nullptr) this->_inputs->log_stack_usage();
+}
+
+/**
  * @brief Start the controller execution flow, which sets up various tasks and starts various components.
  * 
  */
@@ -83,6 +94,12 @@ void Controller::begin()
             this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
             this->_display->actions_overlay(false);
         }
+    });
+    this->_motion->set_status_flag_callback([this](uint8_t op, uint8_t value){
+        this->_display->set_status_flags((status_op_t)op, value);
+    });
+    this->_motion->set_status_value_callback([this](uint8_t value){
+        this->_display->set_status_value(value);
     });
 
     Logger.Info(F("... Done."));
@@ -187,7 +204,7 @@ void Controller::manage_lights(uint8_t gpio, const char* command)
     {
         digitalWrite(LIGHT_STRIP_PIN, LOW);
         this->_display->set_button(gpio, TOUCH_TAB_STATE::OFF);
-        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);        
+        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);      
     }
     else if(is_warm)
     {

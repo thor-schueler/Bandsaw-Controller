@@ -62,7 +62,7 @@ inputs_t __inputs [] =
  */
 Inputs::Inputs()
 {
-    if(Inputs::_pcf8575 == NULL) Inputs::_pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN, PCF8575_INT_PIN, Inputs::on_PCF8575_input_changed);
+    if(Inputs::_pcf8575 == NULL) Inputs::_pcf8575 = new PCF8575(PCF8575_ADDRESS, PCF8575_SDA_PIN, PCF8575_SCL_PIN);
     _wheel_callbacks.reserve(2);
     __instances++;
 }
@@ -74,21 +74,70 @@ Inputs::Inputs()
 Inputs::~Inputs()
 {
     __instances--;
+    if(this->_wheelRunner != NULL)
+    {
+        this->_wheelRunner_stop_requested.store(true, std::memory_order_release);
+        this->request_task_stop(this->_wheelRunner, this->_wheelRunner_stop_requested, "wheelRunner", 2000);
+        this->_wheelRunner = NULL;
+    }
+
+    if(this->_extendedGPIOWatcher != NULL)
+    {
+        this->_extended_gpio_watcher_stop_requested.store(true, std::memory_order_release);
+        this->request_task_stop(this->_extendedGPIOWatcher, this->_extended_gpio_watcher_stop_requested, "extendedGPIOWatcher", 2000);
+        this->_extendedGPIOWatcher = NULL;
+    }
+
     if(__instances == 0)
     {
         if(Inputs::_pcf8575 != NULL) delete Inputs::_pcf8575;
-        if(Inputs::_extendedGPIOWatcher != NULL)
-        {
-            vTaskDelete(Inputs::_extendedGPIOWatcher); 
-            Inputs::_extendedGPIOWatcher = NULL; 
-        }
-    }
-    if(this->_wheelRunner != NULL)
-    {
-        vTaskDelete(this->_wheelRunner); 
-        this->_wheelRunner = NULL; 
+        Inputs::_pcf8575 = NULL;
     }
 }
+
+/**
+ * @brief Requests a task to stop and waits for it to acknowledge exit.
+ * 
+ * The task owns the actual shutdown path and clears its handle only after it has
+ * exited. This prevents stale task handles and race-prone polling on a handle that may
+ * be invalid while the task is still running.
+ */
+void Inputs::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
+{
+    if(task_handle == NULL) return;
+
+    stop_flag.store(true, std::memory_order_release);
+    xTaskNotifyGive(task_handle);           // important to unblock a blocked task. Note that the task logic
+                                            // needs to reflect the fact that the unblock might 
+                                            // come from this request and process the stop and exit before
+                                            // normal flow control logic. 
+    const uint32_t start_ms = millis();
+    while(task_handle != NULL && (millis() - start_ms) < timeout_ms)
+    {
+        if(eTaskGetState(task_handle) == eDeleted)
+        {
+            task_handle = NULL;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if(task_handle != NULL)
+    {
+        Logger.Info_f(F("... Inputs: timed out waiting for %s task to exit; task owns shutdown path and retains control."), task_name);
+    }
+}
+
+/**
+ * @brief Logs the usage of the various task stacks to the console
+ * 
+ */
+void Inputs::log_stack_usage()
+{
+    if(this->_extendedGPIOWatcher != NULL) Logger.Info_f(F("Inputs: Extended GPIO Watcher High Water Mark: %u"), uxTaskGetStackHighWaterMark(this->_extendedGPIOWatcher));
+    if(this->_wheelRunner != NULL)         Logger.Info_f(F("Inputs: Wheel runner High Water Mark:          %u"), uxTaskGetStackHighWaterMark(this->_wheelRunner));
+}
+
 
 /**
  * @brief Initialize teh GPIO extender, configure interrupts and start monitoring
@@ -108,8 +157,13 @@ void Inputs::begin()
     Logger.Info(F("...   Attach event receivers for GPIO"));
     attachInterruptArg(digitalPinToInterrupt(WHEEL_A), Inputs::handle_encoder_change, this, CHANGE);
     attachInterruptArg(digitalPinToInterrupt(WHEEL_B), Inputs::handle_encoder_change, this, CHANGE);
+    attachInterruptArg(PCF8575_INT_PIN, [](void *arg){
+        Inputs *_this = static_cast<Inputs *>(arg); 
+        _this->on_PCF8575_input_changed();
+    }, this, FALLING);
 
     Logger.Info(F("...   Create various tasks"));
+    _wheelRunner_stop_requested.store(false, std::memory_order_release);
     xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 0);
 
     Logger.Info(F("...   Done."));
@@ -124,7 +178,8 @@ void Inputs::start_monitoring()
     if(Inputs::_extendedGPIOWatcher == NULL)
     {
         Logger.Info(F("...   Configure Extended GPIO monitoring task"));
-        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 4096, this, 1, &Inputs::_extendedGPIOWatcher, 0);
+        Inputs::_extended_gpio_watcher_stop_requested.store(false, std::memory_order_release);
+        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 4096, this, 1, &_extendedGPIOWatcher, 0);
     }
 }
 
@@ -132,13 +187,13 @@ void Inputs::start_monitoring()
  * @brief Pauses Monitoring for all commands that are allowed to pause
  * 
  */
-void Inputs::pause_monitoring() { this->_pause = true; }
+void Inputs::pause_monitoring() { this->_pause.store(true, std::memory_order_release); }
 
 /**
  * @brief Resumes Monitoring for commands that are paused
  * 
  */    
-void Inputs::resume_monitoring() { this->_pause = false; }
+void Inputs::resume_monitoring() { this->_pause.store(false, std::memory_order_release); }
 
 
 
@@ -210,7 +265,14 @@ void Inputs::extended_GPIO_watcher(void* args)
     Inputs *_this = reinterpret_cast<Inputs *>(args);
     Logger.Info(F("... Extended GPIO Watcher has started."));
     for (;;) 
-    { 
+    {
+        if (_this->_extended_gpio_watcher_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Extended GPIO Watcher shutdown requested."));
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+                // keep this larger than 10ms to prevent bounce reads on the inputs....
 
         PCF8575::DigitalInput di = Inputs::_pcf8575->digitalReadAll();
         uint16_t bs = 0x0000;
@@ -238,20 +300,21 @@ void Inputs::extended_GPIO_watcher(void* args)
             uint16_t turned_off = button_state & ~bs;
             button_state = bs;
             
-            String s;
             for (int i = 15; i >= 0; --i)
             { 
-                s += (button_state & (1u << i)) ? '1' : '0';
-                if (__inputs[0].inputs[i].can_be_paused && _this->_pause) continue;
+                if (__inputs[0].inputs[i].can_be_paused && _this->_pause.load(std::memory_order_acquire)) continue;
                 if (turned_on & (1u << i) && __inputs[0].inputs[i].entry != nullptr) __inputs[0].inputs[i].entry(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
                 if (turned_off & (1u << i) && __inputs[0].inputs[i].exit != nullptr) __inputs[0].inputs[i].exit(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
-        
+
         // Wait for the notification to come from the event handler
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
+    _this->_extendedGPIOWatcher = NULL;
+    _this->_extended_gpio_watcher_stop_requested.store(false, std::memory_order_release);
+    Logger.Info(F("... Extended GPIO Watcher has stopped."));
+    vTaskDelete(NULL);
 }
 
 /**
@@ -265,33 +328,40 @@ void Inputs::wheel_runner(void* args)
     Inputs *_this = reinterpret_cast<Inputs *>(args);
     Logger.Info(F("... Wheel Runner task has started."));
     for (;;) 
-    { 
+    {
+        if (_this->_wheelRunner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Wheel Runner shutdown requested."));
+            break;
+        }
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (_this->_wheelRunner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Wheel Runner shutdown requested."));
+            break;
+        }
 
         // this section is executed for every wheel position change.
         for (auto& callback : _this->_wheel_callbacks) callback(_this->_direction, _this->_wheel_position);
     }
+    _this->_wheelRunner = NULL;
+    _this->_wheelRunner_stop_requested.store(false, std::memory_order_release);
+    Logger.Info(F("... Wheel Runner task complete."));
+    vTaskDelete(NULL);
 }
 
 /**
  * @brief Event handler handling input change events on the PCF8575 
- *
  */
 void IRAM_ATTR Inputs::on_PCF8575_input_changed()
 {
-    // debounce check to prevent double button presses. The PCF8575 can be a bit noisy and this has been 
-    // found to be a reliable way to prevent it.
+    // debounce check here is not necessary as the task will take care of that and also filter
+    // out potential doubles....
     BaseType_t xHigherPriorityTaskToken = pdFALSE;
-    volatile uint32_t lastDebounceTime = 0; // Last debounce time volatile 
-    uint32_t currentTime = millis(); 
-
-    if ((currentTime - lastDebounceTime) > 250 && Inputs::_extendedGPIOWatcher != NULL) 
-    {     
-        vTaskNotifyGiveFromISR(Inputs::_extendedGPIOWatcher, &xHigherPriorityTaskToken); 
+    if (this->_extendedGPIOWatcher != NULL)
+    {
+        vTaskNotifyGiveFromISR(this->_extendedGPIOWatcher, &xHigherPriorityTaskToken);
         portYIELD_FROM_ISR(xHigherPriorityTaskToken);
-                
-        // Update the last debounce time 
-        lastDebounceTime = currentTime; 
     }
 }
 

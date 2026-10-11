@@ -57,9 +57,9 @@ void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, s
             else
             {
                 Logger.Info(F("... Creating Feeds and Speeds Monitoring task."));
-                this->_fas_break = false;
+                this->_fas_stop_requested.store(false, std::memory_order_release);
                 FAS_TaskArgs* args = new FAS_TaskArgs { this, std::move(get_speed) };
-                xTaskCreatePinnedToCore(fas_runner, "Feeds and Speeds Watcher", 4096, args, 1, &_fas_runner, 1);
+                xTaskCreatePinnedToCore(fas_runner, "feedsAndSpeedsWatcher", 4096, args, 1, &_fas_runner, 1);
             }
         }
     }
@@ -69,7 +69,7 @@ void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, s
         else
         {
             Logger.Info(F("... Sending termination request to Feeds and Speeds Monitoring task."));
-            this->_fas_break = true;
+            this->_fas_stop_requested.store(true, std::memory_order_release);
         }
     }
 }
@@ -88,35 +88,12 @@ void Display::fas_overlay(bool active, float speed)
     overlay.fillSprite(TFT_BLACK);
     if(active) 
     {
-        char buf[16];
-        uint8_t xx = 0;
         uint8_t x = FEED_X_OFFSET;
-        snprintf(buf, sizeof(buf), speed < 10 ? "%.2f" : "%.1f", speed);
         overlay.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)speeds_and_feeds);
         overlay.setTextColor(LCARS_ORANGE, TFT_BLACK);
         overlay.fillRect(6, 31, 104, 50, TFT_BLACK);
 
-        for(char* p = buf; *p; ++p)
-        {
-            lgfx::rgb565_t* img = nullptr;
-            switch(*p)
-            {
-                case '0': img = (lgfx::rgb565_t*)D0; xx = D_WIDTH; break;
-                case '1': img = (lgfx::rgb565_t*)D1; xx = D_WIDTH; break;
-                case '2': img = (lgfx::rgb565_t*)D2; xx = D_WIDTH; break;
-                case '3': img = (lgfx::rgb565_t*)D3; xx = D_WIDTH; break;
-                case '4': img = (lgfx::rgb565_t*)D4; xx = D_WIDTH; break;
-                case '5': img = (lgfx::rgb565_t*)D5; xx = D_WIDTH; break;
-                case '6': img = (lgfx::rgb565_t*)D6; xx = D_WIDTH; break;
-                case '7': img = (lgfx::rgb565_t*)D7; xx = D_WIDTH; break;
-                case '8': img = (lgfx::rgb565_t*)D8; xx = D_WIDTH; break;
-                case '9': img = (lgfx::rgb565_t*)D9; xx = D_WIDTH; break;
-                case '.': img = (lgfx::rgb565_t*)DDot; xx = DDOT_WIDTH; break;
-            }
-            if(img == nullptr) continue;
-            overlay.pushImage(x, FEED_Y_OFFSET, xx, D_HEIGHT, img, TFT_BLACK);
-            x += xx - 2;
-        }
+        x = this->write_fnumber_into_sprite(overlay, speed, x, FEED_Y_OFFSET, D_WIDTH, D_HEIGHT, DDOT_WIDTH);
         overlay.pushImage(x + 5, FEED_Y_OFFSET, DIPM_WIDTH, D_HEIGHT, (lgfx::rgb565_t*)DIPM, TFT_BLACK);
         if(this->_has_alerts) overlay.pushImage(62, 85, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
     }
@@ -170,3 +147,338 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
     overlay.deleteSprite();
 }
 
+/**
+ * @brief Writes a number into a sprite using the LCARS front digits
+ * 
+ * @param sprite - reference to teh sprite
+ * @param number - number to write
+ * @param x - x coordinate to write at
+ * @param y - y coordinate to write at
+ * @param cw - character width
+ * @param ch - character height
+ * @param pad_to - the number of digits to pad to
+ * 
+ * @returns An unsigned integer containing the x coordinate of the end of the drawn number
+ */
+uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch, uint8_t pad_to)
+{
+    char __buf[16];
+    uint16_t __x = x;
+    snprintf(__buf, sizeof(__buf), "%u", number);
+    for(char* __p = __buf; *__p; ++__p)
+    {
+        if(pad_to > strlen(__buf)) __x += (pad_to - strlen(__buf)) * (cw - (cw == SD_WIDTH ? 2 : 2));
+        lgfx::rgb565_t* __img = nullptr;
+        switch(*__p)
+        {
+            case '0': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD0 : (lgfx::rgb565_t*)D0; break;
+            case '1': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD1 : (lgfx::rgb565_t*)D1; break;
+            case '2': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD2 : (lgfx::rgb565_t*)D2; break;
+            case '3': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD3 : (lgfx::rgb565_t*)D3; break;
+            case '4': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD4 : (lgfx::rgb565_t*)D4; break;
+            case '5': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD5 : (lgfx::rgb565_t*)D5; break;
+            case '6': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD6 : (lgfx::rgb565_t*)D6; break;
+            case '7': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD7 : (lgfx::rgb565_t*)D7; break;
+            case '8': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD8 : (lgfx::rgb565_t*)D8; break;
+            case '9': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD9 : (lgfx::rgb565_t*)D9; break;
+        }
+        if(__img == nullptr) continue;
+        sprite.pushImage(__x, y, cw, ch, __img, TFT_BLACK);
+         __x += cw - (cw == SD_WIDTH ? 2 : 2);
+    }
+    return __x;
+}
+
+/**
+ * @brief Writes a number into a sprite using the LCARS front digits
+ * 
+ * @param sprite - reference to teh sprite
+ * @param number - number to write
+ * @param x - x coordinate to write at
+ * @param y - y coordinate to write at
+ * @param cw - character width
+ * @param ch - character height
+ * 
+ * @returns An unsigned integer containing the x coordinate of the end of the drawn number
+ */
+uint16_t Display::write_fnumber_into_sprite(LGFX_Sprite &sprite, float number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch, uint8_t sw)
+{
+    char __buf[16];
+    uint16_t __x = x;
+    uint16_t __xx = cw;
+    snprintf(__buf, sizeof(__buf), number < 10 ? "%.2f" : "%.1f", number);
+    for(char* __p = __buf; *__p; ++__p)
+    {
+        lgfx::rgb565_t* __img = nullptr;
+        switch(*__p)
+        {
+            case '0': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD0 : (lgfx::rgb565_t*)D0; __xx = cw; break;
+            case '1': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD1 : (lgfx::rgb565_t*)D1; __xx = cw; break;
+            case '2': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD2 : (lgfx::rgb565_t*)D2; __xx = cw; break;
+            case '3': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD3 : (lgfx::rgb565_t*)D3; __xx = cw; break;
+            case '4': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD4 : (lgfx::rgb565_t*)D4; __xx = cw; break;
+            case '5': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD5 : (lgfx::rgb565_t*)D5; __xx = cw; break;
+            case '6': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD6 : (lgfx::rgb565_t*)D6; __xx = cw; break;
+            case '7': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD7 : (lgfx::rgb565_t*)D7; __xx = cw; break;
+            case '8': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD8 : (lgfx::rgb565_t*)D8; __xx = cw; break;
+            case '9': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)SD9 : (lgfx::rgb565_t*)D9; __xx = cw; break;
+            case '.': __img = ch == SD_HEIGHT ? (lgfx::rgb565_t*)DDot : (lgfx::rgb565_t*)DDot; __xx = sw; break;
+        }
+        if(__img == nullptr) continue;
+        sprite.pushImage(__x, y, __xx, ch, __img, TFT_BLACK);
+         __x += __xx - (cw == SD_WIDTH ? 0 : 2);
+    }
+    return __x;
+}
+
+/**
+ * @brief Draws the blade running indiator animation into the status bar.
+ * 
+ * @param sprite Sprite to draw into
+ * @param x - the x coordinate
+ * @param y - the y coordinate
+ * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+ */
+uint16_t Display::draw_blade_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y)
+{
+    const static uint8_t GLYPH_W = 24;
+    static bool first = true;
+    static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
+
+    // evaluate whether the blade is running
+    if((this->_status & 0x0100) != 0x0100) 
+    {   
+        first = true;                                                           // blade running flag is not set, so reset the 
+        return x;                                                               // index indicator and return original x
+    }
+
+    // load the image into the sprite
+    if(first)
+    {
+        memcpy(s, blade_running, GLYPH_W * STATUS_GLYPH_H *sizeof(uint16_t));   // first time drawing, load the image from 
+        first = false;
+    }
+    else
+    {
+        for (int y = 0; y < STATUS_GLYPH_H; y++) 
+        {
+            uint16_t *row = &s[y * GLYPH_W];                                    // the image is 24px wide
+            uint16_t tmp = row[GLYPH_W-1];                                      // save the last pixel in the row
+            memmove(&row[1], &row[0], (GLYPH_W - 1) * sizeof(uint16_t));        // move one pixel to right
+            row[0] = tmp;                                                       // cirlce previous last pixel to front
+        }
+    }
+    sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)s);
+    return x + GLYPH_W + STATUS_GLYPH_SPACE;
+}
+
+/**
+ * @brief Draws the lead screw running indiator animation into the status bar.
+ * 
+ * @param sprite Sprite to draw into
+ * @param x - the x coordinate
+ * @param y - the y coordinate
+ * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+ */
+uint16_t Display::draw_screw_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y)
+{
+    const static uint8_t GLYPH_W = 26;
+    const static uint8_t GLYPH_S_W = 19;
+    static bool first = true;
+    static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
+
+    // evaluate whether the blade is running
+    if((this->_status & 0x0200) != 0x0200) 
+    {   
+        first = true;                                                           // lead screw running flag is not set, so reset the 
+        return x;                                                               // index indicator and return original x
+    }
+
+    // load the image into the sprite
+    if(first)
+    {
+        memcpy(s, feed_running_screw, GLYPH_W * STATUS_GLYPH_H *sizeof(uint16_t));   // first time drawing, load the image from 
+        first = false;
+    }
+    else
+    {
+        for (int y = 0; y < STATUS_GLYPH_H; y++) 
+        {
+            uint16_t *row = &s[y * GLYPH_W];                                    // the image is 24px wide
+            uint16_t tmp = row[GLYPH_W-1];                                      // save the last pixel in the row
+            memmove(&row[1], &row[0], (GLYPH_W - 1) * sizeof(uint16_t));        // move one pixel to right
+            row[0] = tmp;                                                       // cirlce previous last pixel to front
+        }
+    }
+    sprite.pushImage(x, y, GLYPH_S_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)feed_running);
+    sprite.pushImage(x + GLYPH_S_W, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)s);
+    return x + GLYPH_S_W + GLYPH_W + STATUS_GLYPH_SPACE;
+}
+
+/**
+ * @brief Draws the coolant running indiator animation into the status bar.
+ * 
+ * @param sprite Sprite to draw into
+ * @param x - the x coordinate
+ * @param y - the y coordinate
+ * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+ */
+ uint16_t Display::draw_coolant_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y)
+ {
+    const static uint8_t GLYPH_W = 15;
+    static bool first = true;
+    static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
+
+    // evaluate whether the blade is running
+    if((this->_status & 0x0400) != 0x0400) 
+    {   
+        first = true;                                                           // lead screw running flag is not set, so reset the 
+        return x;                                                               // index indicator and return original x
+    }
+
+    // load the image into the sprite
+    if(first)
+    {
+        memcpy(s, coolant_running, GLYPH_W * STATUS_GLYPH_H *sizeof(uint16_t)); // first time drawing, load the image from 
+        first = false;
+    }
+    else
+    {
+
+        size_t row_size = GLYPH_W * sizeof(uint16_t);
+        uint16_t tmp[GLYPH_W]; 
+        memcpy(tmp, &(s[(STATUS_GLYPH_H - 1) * GLYPH_W]), row_size);            // save the last row
+        memmove(&(s[GLYPH_W]), s, (STATUS_GLYPH_H - 1) * row_size);             // move rows 1 row down
+        memcpy(s, tmp, row_size);                                               // copy last row to first.
+    }
+    sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)s);
+    return x + GLYPH_W + STATUS_GLYPH_SPACE;
+ }
+
+/**
+ * @brief Draws the air blast running indiator animation into the status bar.
+ * 
+ * @param sprite Sprite to draw into
+ * @param x - the x coordinate
+ * @param y - the y coordinate
+ * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+ */
+uint16_t Display::draw_air_running_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y)
+{
+    const static uint8_t GLYPH_W = 15;
+    static bool first = true;
+    static uint16_t s[GLYPH_W * STATUS_GLYPH_H];
+
+    // evaluate whether the blade is running
+    if((this->_status & 0x0800) != 0x0800) 
+    {   
+        first = true;                                                           // lead screw running flag is not set, so reset the 
+        return x;                                                               // index indicator and return original x
+    }
+
+    // load the image into the sprite
+    if(first)
+    {
+        memcpy(s, air_running, GLYPH_W * STATUS_GLYPH_H *sizeof(uint16_t));     // first time drawing, load the image from 
+        first = false;
+    }
+    else
+    {
+
+        size_t row_size = GLYPH_W * sizeof(uint16_t);
+        uint16_t tmp[GLYPH_W]; 
+        memcpy(tmp, &(s[(STATUS_GLYPH_H - 1) * GLYPH_W]), row_size);            // save the last row
+        memmove(&(s[GLYPH_W]), s, (STATUS_GLYPH_H - 1) * row_size);             // move rows 1 row down
+        memcpy(s, tmp, row_size);                                               // copy last row to first.
+    }
+    sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)s);
+    return x + GLYPH_W + STATUS_GLYPH_SPACE;
+}
+
+/**
+ * @brief Draws the stall guard status into the status bar.
+ * 
+ * @param sprite Sprite to draw into
+ * @param x - the x coordinate
+ * @param y - the y coordinate
+ * @return uint16_t An unsigned integater denoting the x coordinate after the action.
+ */
+uint16_t Display::draw_stallguard_status(LGFX_Sprite &sprite, uint16_t x, uint16_t y)
+{
+    const static uint8_t GLYPH_L_W = 70;
+    const static uint8_t GLYPH_W = 83;
+    uint16_t _s = this->_status & 0x3000;
+
+    // evaluate whether the blade is running
+    if(_s!= 0x1000 && _s != 0x2000 && _s != 0x3000) 
+    {   
+        return x;                                                               // stall guard not active
+    }
+
+    uint8_t sg = uint8_t(_status & 0x00FFu);
+    sprite.pushImage(x, y, GLYPH_L_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)stall_margin);
+    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W, y, SD_WIDTH, SD_HEIGHT, 3);
+    x += STATUS_GLYPH_SPACE;
+    if(_s == 0x1000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_safe);
+    if(_s == 0x2000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall_risk);
+    if(_s == 0x3000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall);
+    return x + GLYPH_W + STATUS_GLYPH_SPACE;
+}
+
+/**
+ * @brief Status bar task function, respsonsible for drawing the taskbar and keeping it up-to-date
+ * 
+ * @param args task arguments
+ */
+void Display::status_bar_runner(void *args)
+{
+    Display *_this = static_cast<Display *>(args);
+    LGFX_Sprite sb(_this);
+
+    Logger.Info(F("... Status bar taks successfully started."));
+    sb.setColorDepth(16);
+    sb.createSprite(STATUS_W, STATUS_GLYPH_H);
+    sb.fillSprite(TFT_BLACK);
+
+    bool has_static_image = false;
+    for(;;)
+    {
+        vTaskDelay(pdMS_TO_TICKS(50));        
+        if(_this->_paused.load(std::memory_order_acquire)) continue;                // do not draw taskbar when paused
+        if(_this->_screen == SCREENS::MAIN)
+        {
+            if(_this->_has_toasts) continue;                                        // don't draw if a toast is showing
+            if(has_static_image && _this->_status & 0xff00 == 0x0000) continue;     // don't draw if static image and no action
+
+            sb.fillSprite(TFT_BLACK);
+            if((_this->_status & 0xff00) == 0x0000)
+            {
+                // no perations are running, use the status bar to display a simple message
+                sb.setTextColor(BORG_GREEN, TFT_BLACK);
+                sb.setFont(&fonts::Font2);
+                sb.drawString(F("Move the carriage using the wheel"), 0, 0);
+                has_static_image = true;
+            }
+            else
+            {
+                uint16_t x = _this->draw_blade_running_status(sb, 0,0);
+                x = _this->draw_screw_running_status(sb, x, 0);
+                x = _this->draw_coolant_running_status(sb, x, 0);
+                x = _this->draw_air_running_status(sb, x, 0);
+                x = _this->draw_stallguard_status(sb, x, 0);
+            }
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            { 
+                sb.pushSprite(88, 281, TFT_PLUM);
+                xSemaphoreGive(_this->_display_mutex);
+            }
+        }
+        else if(_this->_screen == SCREENS::EMS) continue;
+        else if(_this->_screen == SCREENS::ALERTS) continue;
+        else if(_this->_screen == SCREENS::SETTINGS) continue;
+    }
+    sb.deleteSprite();
+    _this->_statusRunner = NULL;
+    Logger.Info(F("... Status bar task complete."));
+    vTaskDelete(NULL);
+}

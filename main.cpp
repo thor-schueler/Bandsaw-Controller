@@ -48,7 +48,7 @@ SET_LOOP_TASK_STACK_SIZE(3052);
   //
 #endif
 
-Controller* controller = NULL;
+Controller* controller = nullptr;
 
 
 /**
@@ -102,5 +102,9 @@ void setup()
  */
 void loop()
 {
-  vTaskDelay(100);
+  vTaskDelay(10000);
+  heap_caps_check_integrity_all(true);
+  Logger.Info_f(F("Main: High Water Mark:                         %u"), uxTaskGetStackHighWaterMark(NULL));
+  if(controller != nullptr) controller->log_stack_usage();
+  vTaskDelay(50000);
 }
