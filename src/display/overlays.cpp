@@ -156,16 +156,18 @@ void Display::actions_overlay(bool active, const uint16_t* image, size_t image_s
  * @param y - y coordinate to write at
  * @param cw - character width
  * @param ch - character height
+ * @param pad_to - the number of digits to pad to
  * 
  * @returns An unsigned integer containing the x coordinate of the end of the drawn number
  */
-uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch)
+uint16_t Display::write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch, uint8_t pad_to)
 {
     char __buf[16];
     uint16_t __x = x;
     snprintf(__buf, sizeof(__buf), "%u", number);
     for(char* __p = __buf; *__p; ++__p)
     {
+        if(pad_to > strlen(__buf)) __x += (pad_to - strlen(__buf)) * (cw - (cw == SD_WIDTH ? 2 : 2));
         lgfx::rgb565_t* __img = nullptr;
         switch(*__p)
         {
@@ -415,7 +417,7 @@ uint16_t Display::draw_stallguard_status(LGFX_Sprite &sprite, uint16_t x, uint16
 
     uint8_t sg = uint8_t(_status & 0x00FFu);
     sprite.pushImage(x, y, GLYPH_L_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)stall_margin);
-    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W + (sg < 100 ? SD_WIDTH-2: 0) , y, SD_WIDTH, SD_HEIGHT);
+    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W, y, SD_WIDTH, SD_HEIGHT, 3);
     x += STATUS_GLYPH_SPACE;
     if(_s == 0x1000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_safe);
     if(_s == 0x2000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall_risk);

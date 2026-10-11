@@ -560,7 +560,7 @@ public:
      * 
      * @returns An unsigned integer containing the x coordinate of the end of the drawn number
      */
-    uint16_t write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch);
+    uint16_t write_unumber_into_sprite(LGFX_Sprite &sprite, uint16_t number, uint16_t x, uint16_t y, uint8_t cw, uint8_t ch,  uint8_t pad_to=0);
 
     /**
      * @brief Writes a number into a sprite using the LCARS front digits
@@ -571,6 +571,7 @@ public:
      * @param y - y coordinate to write at
      * @param cw - character width
      * @param ch - character height
+     * @param pad_to - the number of digits to pad to
      * 
      * @returns An unsigned integer containing the x coordinate of the end of the drawn number
      */
