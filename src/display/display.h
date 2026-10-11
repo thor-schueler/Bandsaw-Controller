@@ -7,6 +7,7 @@
 #include "Arduino.h"
 #include <LovyanGFX.hpp>
 #include "src/logging/SerialLogger.h"
+#include <atomic>
 #include <functional>
 
 #define SCLK_PIN        18
@@ -398,14 +399,14 @@ public:
      * running animations being stopped. New animations will not start. 
      * 
      */
-    void pause_tasks() { this->_paused = true; }; 
+    void pause_tasks() { this->_paused.store(true, std::memory_order_release); }; 
 
     /**
      * @brief Resume task processing. This will result in touch being processed again and 
      * animations can now start. 
      * 
      */
-    void resume_tasks() { this->_paused = false; }; 
+    void resume_tasks() { this->_paused.store(false, std::memory_order_release); }; 
 
     /**
      * @brief should be called when the homing is complete to terminate the homing animation.
@@ -413,7 +414,7 @@ public:
      */
     void homing_complete(bool toast = true) 
     { 
-      if(this->_homing_animation != NULL) this->_homing_animation_break = true; 
+      this->request_task_stop(this->_homing_animation, this->_homing_animation_stop_requested, "homingAnimationRunner");
       if(toast) this->show_toast(F("Homing completed successfully."), false);
     };
 
@@ -421,7 +422,25 @@ public:
      * @brief should be called when the feeding is complete to terminate the feeding animation.
      * 
      */
-    void feeding_complete() { if(this->_feed_animation != NULL) this->_feed_animation_break = true; };
+    void feeding_complete() { this->request_task_stop(this->_feed_animation, this->_feed_animation_stop_requested, "feedAnimationRunner"); };
+
+    /**
+     * @brief should be called when the cutting with autofeed is complete to terminate the cutting chart.
+     * @param toast - true to show a toast indicating that the cutting is complete, false to not show a toast.  
+     */
+    void cutting_complete(bool toast = true) 
+    { 
+      this->request_task_stop(this->_cutting_chart, this->_cutting_chart_stop_requested, "cuttingChartRunner");
+      if(toast) this->show_toast(F("Automated cutting completed successfully."), false);
+    };
+
+    /**
+     * @brief request a task to stop and wait for it to acknowledge exit.
+     * 
+     * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
+     * it ensures the task owns the shutdown path and the handle is cleared only after exit.
+     */
+    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 2000);
 
 
     /**
@@ -430,17 +449,7 @@ public:
      * 
      * @param suspend - true to suspend (default), false to resume the chart. 
      */
-    void suspend_cutting_chart(bool suspend = true) { this->_suspend_cutting_chart = suspend; }
-
-    /**
-     * @brief should be called when the cutting with autofeed is complete to terminate the cutting chart.
-     * @param toast - true to show a toast indicating that the cutting is complete, false to not show a toast.  
-     */
-    void cutting_complete(bool toast = true) 
-    { 
-      if(this->_cutting_chart != NULL) this->_cutting_chart_break = true; 
-      if(toast) this->show_toast(F("Automated cutting completed successfully."), false);
-    };
+    void suspend_cutting_chart(bool suspend = true) { this->_suspend_cutting_chart.store(suspend, std::memory_order_release); }
 
     /**
      * @brief Toggles the alert screen on an off.
@@ -788,16 +797,20 @@ public:
 
     #pragma endregion
 
-    volatile bool _paused = false;
-    volatile bool _homing_animation_break = false;
-    volatile bool _feed_animation_break = false;
-    volatile bool _fas_break = false;
+    std::atomic<bool> _paused {false};
+    std::atomic<bool> _homing_animation_stop_requested {false};
+    std::atomic<bool> _feed_animation_stop_requested {false};
+    std::atomic<bool> _fas_stop_requested {false};
+    std::atomic<bool> _touchRunner_stop_requested {false};
+    std::atomic<bool> _alertBadgeRunner_stop_requested {false};
+    std::atomic<bool> _statusRunner_stop_requested {false};
+    std::atomic<bool> _cutting_chart_stop_requested {false};
+    std::atomic<bool> _toasting_stop_requested {false};
+    std::atomic<bool> _has_alerts {false};
+    std::atomic<bool> _has_toasts {false};
+    std::atomic<bool> _suspend_cutting_chart {false};
     volatile bool _use_manual_feed_smoothing = false;
-    volatile bool _cutting_chart_break = false;
-    volatile bool _toasting_break = false;
-    volatile bool _has_alerts = false;
-    volatile bool _has_toasts = false;
-    volatile bool _suspend_cutting_chart = false;
+
     volatile uint16_t _status = 0x0000;
     volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;

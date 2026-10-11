@@ -28,21 +28,13 @@ Motion::Motion()
  */
 Motion::~Motion()
 {
-    this->_job_should_exit = true;
-    vTaskDelay(pdMS_TO_TICKS(250));
-    if(this->_manual_feed_task != NULL) vTaskDelete(this->_manual_feed_task);
-    if(this->_manual_speed_task != NULL) vTaskDelete(this->_manual_speed_task);
-    if(this->_homing_task != NULL) vTaskDelete(this->_homing_task);
-    if(this->_blade_task != NULL) vTaskDelete(this->_blade_task);
-    if(this->_blade_safety_task != NULL) vTaskDelete(this->_blade_safety_task);
-    if(this->_cutting_task != NULL) vTaskDelete(this->_cutting_task);
-    this->_manual_feed_task = NULL;
-    this->_manual_speed_task = NULL;
-    this->_blade_task = NULL;
-    this->_blade_safety_task = NULL;
-    this->_homing_task = NULL;
-    this->_cutting_task = NULL;
-
+    this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
+    this->request_task_stop(this->_blade_safety_task, this->_blade_safety_monitor_stop_requested, "bladeSafetyMonitor", 2000);        
+    this->request_task_stop(this->_manual_speed_task, this->_speed_monitor_stop_requested, "manualSpeedMonitor", 2000);
+    this->request_task_stop(this->_manual_feed_task, this->_manual_feed_runner_stop_requested, "manualFeedRunner", 2000);
+    this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner", 2000);
+    this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner", 2000);
+              
     delete this->_tmc_driver;
     this->_tmc_serial->end();
     delete this->_tmc_serial;
@@ -153,6 +145,38 @@ void Motion::begin()
 }
 
 /**
+ * @brief request a task to stop and wait for it to acknowledge exit.
+ * 
+ * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
+ * it ensures the task owns the shutdown path and the handle is cleared only after exit.
+ */
+void Motion::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
+{
+    if(task_handle == NULL) return;
+
+    stop_flag.store(true, std::memory_order_release);
+    xTaskNotifyGive(task_handle);           // important to unblock a blocked task. Note that the task logic
+                                            // needs to reflect the fact that the unblock might 
+                                            // come from this request and process the stop and exit before
+                                            // normal flow control logic. 
+    const uint32_t start_ms = millis();
+    while(task_handle != NULL && (millis() - start_ms) < timeout_ms)
+    {
+        if(eTaskGetState(task_handle) == eDeleted)
+        {
+            task_handle = NULL;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if(task_handle != NULL)
+    {
+        Logger.Info_f(F("... Motion: timed out waiting for %s task to exit; task owns shutdown path and retains control."), task_name);
+    }
+}
+
+/**
  * @brief Event handler watching TMC Stepper Diag pin for stall guard notifications
  * @param arg - argumnent passed to the handler, expected to be the instance of the calling object and can 
  * be cast to Motion*
@@ -175,14 +199,16 @@ void IRAM_ATTR Motion::stall_isr(void * arg)
  * be cast to Motion*
  */ 
 void IRAM_ATTR Motion::limit_isr(void * arg) 
-{
+{    
     // debounce limit switch for 250ms
-    volatile static uint32_t lastDebounceTime = 0; // Last debounce time volatile 
-    uint32_t currentTime = millis(); 
+    volatile static uint32_t last_limit_interrupt_ms = 0;       // Last debounce time volatile 
 
-    if ((currentTime - lastDebounceTime) < 250) return;         // ignore bounces
+    Motion *_this = reinterpret_cast<Motion *>(arg);
+    const uint32_t currentTime = millis();
 
-    Motion *_this = reinterpret_cast<Motion *>(arg);  
+    if ((currentTime - last_limit_interrupt_ms) < 250) return;  // ignore bounces
+    last_limit_interrupt_ms = currentTime;
+
     bool hl = digitalRead(LIMIT_1_PIN);                         // home limit - active low
     bool fl = digitalRead(LIMIT_2_PIN);                         // feed limit - active low
     bool dir = digitalRead(DIR_PIN);                            // low - towards home, high - towards feed
@@ -283,10 +309,14 @@ void Motion::blade_monitor(void * args)
     BladeTaskArgs* _args = static_cast<BladeTaskArgs*>(args);
     Motion* _this = _args->self;
     Logger.Info(F("... Starting blade monitoring task"));
-    
+    _this->_blade_monitor_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
-        if(_this->_blade_job_should_exit) break;
+        if(_this->_blade_monitor_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Blade monitor task received termination request"));
+            break;
+        }
         vTaskDelay(pdMS_TO_TICKS(50));
         if(_this->get_blade_status() == BLADE_STATE::STOPPED)
         {
@@ -323,6 +353,7 @@ void Motion::blade_monitor(void * args)
     }
     Logger.Info(F("... Blade monitoring task complete"));
     _this->_blade_task = NULL;
+    _this->_blade_monitor_stop_requested.store(false, std::memory_order_release);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -337,10 +368,9 @@ void Motion::blade_safety_monitor(void * args)
 {
     Motion* _this = static_cast<Motion*>(args);
     Logger.Info(F("... Starting blade safety monitoring task"));
-    
+    _this->_blade_safety_monitor_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
-        vTaskDelay(pdMS_TO_TICKS(10));
         if(!_this->is_blade_allowed_to_run())
         {
             if(_this->get_blade_status() == BLADE_STATE::RUNNING)
@@ -353,12 +383,18 @@ void Motion::blade_safety_monitor(void * args)
         }
         if(_this->get_blade_status() == BLADE_STATE::RUNNING && _this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x01);
         if(_this->get_blade_status() == BLADE_STATE::STOPPED && _this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x01);
+        if(_this->_blade_safety_monitor_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Blade safety monitor task received termination request"));
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     Logger.Info(F("... Blade safety monitoring task complete"));
     _this->_blade_safety_task = NULL;
+    _this->_blade_safety_monitor_stop_requested.store(false, std::memory_order_release);
     vTaskDelete(NULL);
 }
-
 
 /**
  * @brief Manages the air blast solenoid based on the switch state
@@ -378,8 +414,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
 
         if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
         {
-            this->_blade_job_should_exit = true;
-            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
         }
         if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x08);
         this->_air_state = AIR_STATE::OFF;
@@ -388,8 +423,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
     {
         if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
         {
-            this->_blade_job_should_exit = true;
-            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
         }
 
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
@@ -409,9 +443,9 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
 
         if(this->_blade_task == NULL) 
         {
-            this->_blade_job_should_exit = false;
+            this->_blade_monitor_stop_requested.store(false, std::memory_order_release);
             BladeTaskArgs *args = new BladeTaskArgs{ this, indicator_callback };
-            xTaskCreatePinnedToCore(blade_monitor, "Blade Monitor", 2048, args, 1, &_blade_task, 1);
+            xTaskCreatePinnedToCore(blade_monitor, "bladeMonitor", 2048, args, 1, &_blade_task, 1);
         }
 
         this->_air_state =  AIR_STATE::AUTO;       
@@ -437,8 +471,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
 
         if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
         {
-            this->_blade_job_should_exit = true;
-            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
         }
         if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x04);        
         this->_coolant_state = COOLANT_STATE::OFF;
@@ -447,8 +480,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
     {
         if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
         {
-            this->_blade_job_should_exit = true;
-            while( this->_blade_task != NULL) vTaskDelay(pdMS_TO_TICKS(10));
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
         }
 
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
@@ -470,7 +502,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
 
         if(this->_blade_task == NULL) 
         {
-            this->_blade_job_should_exit = false;
+            this->_blade_monitor_stop_requested.store(false, std::memory_order_release);
             BladeTaskArgs *args = new BladeTaskArgs{ this, indicator_callback };
             xTaskCreatePinnedToCore(blade_monitor, "Blade Monitor", 2048, args, 1, &_blade_task, 1);
         }
@@ -528,12 +560,12 @@ void Motion::home(std::function<void(bool)> complete)
 {
     if(this->_homing_task != NULL || complete == nullptr)
     {
-        _job_should_exit = true;
+        this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner", 2000);
         if(_state == MOTION_STATE::HOMING) _state = MOTION_STATE::IDLE;
     }
     else
     {
-        _job_should_exit = false;
+        this->_homing_runner_stop_requested.store(false, std::memory_order_release);
         TaskArgs* args = new TaskArgs { this, std::move(complete) };
         xTaskCreatePinnedToCore(homing_runner, "homingRunner", 2048, args, 1, &_homing_task, 1);
     }
@@ -548,12 +580,12 @@ void Motion::feed(std::function<void(bool)> complete)
 {
     if(this->_cutting_task != NULL || complete == nullptr)
     {
-        _job_should_exit = true;
+        this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner", 2000);
         if(_state == MOTION_STATE::FEEDING) _state = MOTION_STATE::IDLE;
     }
     else
     {
-        _job_should_exit = false;
+        this->_cutting_runner_stop_requested.store(false, std::memory_order_release);
         TaskArgs* args = new TaskArgs { this, std::move(complete) };
         xTaskCreatePinnedToCore(cutting_runner, "cuttingRunner", 2048, args, 1, &_cutting_task, 1);
     }    
@@ -600,7 +632,11 @@ void Motion::homing_runner(void * args)
             }
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_frequency); 
         }
-        if(_this->_job_should_exit) break;
+        if(_this->_homing_runner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("...   Homing task received termination request"));
+            break;
+        }
 
         vTaskDelay(50);                     // delay 100ms. There is no risk here as the interrupt handler will
                                             // disable the stepper as soon as the home limit has been hit. 
@@ -627,11 +663,10 @@ void Motion::homing_runner(void * args)
         Logger.Info(F("...   Homing task terminated due to EMS shutdown.")); 
         _this->_state = MOTION_STATE::SHUTDOWN;
     }
-    else if(_this->_job_should_exit)
+    else if(_this->_homing_runner_stop_requested.load(std::memory_order_acquire))
     {
         _args->callback(true);
         Logger.Info(F("...   Homing task terminated due to user request.")); 
-        _this->_job_should_exit = false;
         _this->_state = MOTION_STATE::IDLE;
     }
     else
@@ -643,6 +678,7 @@ void Motion::homing_runner(void * args)
         _this->_state = MOTION_STATE::IDLE;
     }
     _this->_homing_task = NULL;
+    _this->_homing_runner_stop_requested.store(false, std::memory_order_release);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -696,10 +732,15 @@ void Motion::cutting_runner(void * args)
     digitalWrite(EN_PIN, LOW);          // enable stepper
     _this->limit_isr(_this);            // check if we are already at feed limit, if so, we can skip the feeding sequence.
     if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x02);
+    _this->_cutting_runner_stop_requested.store(false, std::memory_order_release);
     while(_this->_feed_limit == false)
     {
         if(_this->_ems_state == EMS_STATE::SHUTDOWN)  break;
-        if(_this->_job_should_exit) break;
+        if(_this->_cutting_runner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("...   Cutting task received termination request"));
+            break;
+        }
 
         if(_this->_frequency < FREQUENCY_FEED && !startup_complete)     // ramp up feed from 0
         {                                                               // to avoid shocking the motor
@@ -764,11 +805,10 @@ void Motion::cutting_runner(void * args)
         _args->callback(true);
         _this->_state = MOTION_STATE::SHUTDOWN;
     }
-    else if(_this->_job_should_exit)
+    else if(_this->_cutting_runner_stop_requested.load(std::memory_order_acquire))
     {
         Logger.Info(F("...   Cutting task terminated due to user request.")); 
         _args->callback(true);
-        _this->_job_should_exit = false;
         _this->_state = MOTION_STATE::IDLE;
     }
     else
@@ -791,7 +831,7 @@ void Motion::cutting_runner(void * args)
         Logger.Info(F("...   Cutting task complete."));    
     }
     _this->_cutting_task = NULL;
-    heap_caps_check_integrity_all(true);
+    _this->_cutting_runner_stop_requested.store(false, std::memory_order_release);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -816,6 +856,7 @@ void Motion::manual_feed_runner(void* args)
     Motion* _this = static_cast<Motion*>(args);
     Logger.Info(F("... Start manual feed runner task"));
     _this->limit_isr(_this);
+    _this->_manual_feed_runner_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
         uint64_t now_us = esp_timer_get_time();
@@ -846,7 +887,7 @@ void Motion::manual_feed_runner(void* args)
         //
         if(!running && abs(balance) > DEAD_BAND && _this->can_feed(desired_direction))
         {
-            if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task == NULL) xTaskCreate(manual_speed_monitor, "Manual Speed Monitoring Task", 2048, _this, 1, &_this->_manual_speed_task);
+            if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task == NULL) xTaskCreate(manual_speed_monitor, "manualSpeedMonitor", 2048, _this, 1, &_this->_manual_speed_task);
             digitalWrite(DIR_PIN, desired_direction);
             direction = desired_direction;
             ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, _this->_manual_frequency.load());
@@ -896,8 +937,7 @@ void Motion::manual_feed_runner(void* args)
                 digitalWrite(EN_PIN, HIGH);
                 if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task != NULL)
                 {
-                    _this->_speed_monitor_should_exit = true;
-                    while(_this->_manual_speed_task != NULL && (c++ < 254)) vTaskDelay(pdMS_TO_TICKS(10));
+                    _this->request_task_stop(_this->_manual_speed_task, _this->_speed_monitor_stop_requested, "manualSpeedMonitor", 2000);
                 }
                 _this->_step_balance.store(0);
                 balance = 0;
@@ -914,7 +954,17 @@ void Motion::manual_feed_runner(void* args)
             if((last_stopped !=0) && (millis() - last_stopped > WHEEL_PAUSE_LATENCY)) _this->_steps_taken.store(0);  
             vTaskDelay(pdMS_TO_TICKS(50));
         }
+
+        if(_this->_manual_feed_runner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Manual feed runner received termination request"));
+            break;
+        }
     }
+    Logger.Info(F("... Manual feed runner task complete."));
+    _this->_manual_feed_task = NULL;
+    _this->_manual_feed_runner_stop_requested.store(false, std::memory_order_release);
+    vTaskDelete(NULL);
 }
 
 /**
@@ -979,9 +1029,14 @@ void Motion::manual_speed_monitor(void *args)
     const float microsteps_per_rev = MOTOR_STEPS_PER_REV * (MOTOR_MICROSTEPS == 0 ? 1 : MOTOR_MICROSTEPS);
     const float screw_rev_per_microstep = GEAR_RATIO / microsteps_per_rev;
     const float mm_per_microstep = screw_rev_per_microstep * LEADSCREW_LEAD_MM;
+    _this->_speed_monitor_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
-        if(_this->_speed_monitor_should_exit) break;
+        if(_this->_speed_monitor_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("... Blade monitor task received termination request"));
+            break;
+        }
 
         const uint64_t elapsed = esp_timer_get_time() - _this->_time_stamp;
         if(elapsed == 0) continue;
@@ -996,7 +1051,7 @@ void Motion::manual_speed_monitor(void *args)
         vTaskDelay(pdMS_TO_TICKS(MANUAL_SPEED_MONITORING_PERIOD));
     }
     Logger.Info(F("... Manual feed speed monitoring stopped"));
-    _this->_speed_monitor_should_exit = false;
+    _this->_speed_monitor_stop_requested.store(false, std::memory_order_release);
     _this->_manual_speed_task = NULL;
     vTaskDelete(NULL);
 }

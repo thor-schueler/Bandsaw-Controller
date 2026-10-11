@@ -6,6 +6,7 @@
 
 #include "Arduino.h"
 #include <functional>
+#include <atomic>
 #include "PCF8575.h"
 #include "src/logging/SerialLogger.h"
 
@@ -140,6 +141,15 @@ class Inputs {
     void register_wheel_callback(const std::function<void(int, int)>& callback) { this->_wheel_callbacks.push_back(callback); };
 
     /**
+     * @brief Requests a task to stop and waits for it to acknowledge exit.
+     * 
+     * The task owns the actual shutdown path and clears its handle only after it has
+     * exited. This prevents stale task handles and race-prone polling on a handle that may
+     * be invalid while the task is still running.
+     */
+    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 2000);
+
+    /**
      * @brief Reads a specific GPIO on the PCF8575 extender.
      * 
      * @param gpio - GPIO to read
@@ -174,27 +184,28 @@ class Inputs {
 
 
     /**
-     * @brief Event handler handling input change events on the PCF8575 
-     *
-     */
-    static void IRAM_ATTR on_PCF8575_input_changed();
-
-    /**
      * @brief Event handler watching the Quadradure encoder GPIOs.
      * @param arg - argumnent passed to the handler, expected to be the instance of the calling object and can 
      * be cast to Inputs*
      */
     static void IRAM_ATTR handle_encoder_change(void* arg);    
 
+    /**
+     * @brief Event handler handling input change events on the PCF8575 
+     *
+     */
+    void IRAM_ATTR on_PCF8575_input_changed();
 
     std::vector<std::function<void(int, int)>> _wheel_callbacks;
     inline static PCF8575* _pcf8575 = NULL;
-    inline static TaskHandle_t _extendedGPIOWatcher = NULL;
-    TaskHandle_t _wheelRunner;
+    TaskHandle_t _extendedGPIOWatcher = NULL;
+    TaskHandle_t _wheelRunner = NULL;
     int16_t _wheel_encoded = 0x0;
     int16_t _wheel_position = 0x0;
     int8_t _direction = 0;
-    bool _pause = false;
+    std::atomic<bool> _pause {false};
+    std::atomic<bool> _wheelRunner_stop_requested {false};
+    std::atomic<bool> _extended_gpio_watcher_stop_requested {false};
 
 };
 

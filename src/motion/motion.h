@@ -383,6 +383,14 @@ class Motion
     private:
 
         /**
+         * @brief request a task to stop and wait for it to acknowledge exit.
+         * 
+         * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
+         * it ensures the task owns the shutdown path and the handle is cleared only after exit.
+         */
+        void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms);
+
+        /**
          * @brief Checks if the blade is allowed to run based on safety criteria
          * @return true if the blade is allowed to run, false otherwise
          */
@@ -393,15 +401,18 @@ class Motion
         std::atomic<uint16_t> _steps_taken{0};
         std::atomic<int32_t> _step_balance{0};
         std::atomic<uint16_t> _manual_frequency{800};
-        std::atomic<int64_t> _time_stamp = esp_timer_get_time();
+        std::atomic<int64_t> _time_stamp{esp_timer_get_time()};
         std::atomic<uint16_t> _frequency{0};
         
         bool _should_use_task_for_manual_speed = true;
         volatile bool _home_limit = false;
         volatile bool _feed_limit = false;
-        volatile bool _job_should_exit = false;
-        volatile bool _blade_job_should_exit = false;
-        volatile bool _speed_monitor_should_exit = false;
+        std::atomic<bool> _homing_runner_stop_requested{false};
+        std::atomic<bool> _blade_monitor_stop_requested{false};
+        std::atomic<bool> _blade_safety_monitor_stop_requested{false};
+        std::atomic<bool> _speed_monitor_stop_requested{false};
+        std::atomic<bool> _manual_feed_runner_stop_requested{false};
+        std::atomic<bool> _cutting_runner_stop_requested{false};
         volatile bool _stall_alert = false;
         volatile float _manual_speed = 0;        
         volatile uint32_t _last_wheel_click = 0;

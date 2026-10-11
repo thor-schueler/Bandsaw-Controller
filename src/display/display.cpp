@@ -137,14 +137,56 @@ Display::Display() {
  */
 Display::~Display()
 {
-    if(this->_touchRunner != NULL) { vTaskDelete(this->_touchRunner); this->_touchRunner == NULL; }
-    if(this->_homing_animation != NULL) { vTaskDelete(this->_homing_animation); this->_homing_animation == NULL; }
-    if(this->_fas_runner != NULL) { vTaskDelete(this->_fas_runner); this->_fas_runner == NULL; }
-    if(this->_feed_animation != NULL) { vTaskDelete(this->_feed_animation); this->_feed_animation == NULL; }
-    if(this->_cutting_chart != NULL) { vTaskDelete(this->_cutting_chart); this->_cutting_chart == NULL; }
-    if(this->_toastRunner != NULL) { vTaskDelete(this->_toastRunner); this->_toastRunner == NULL; }
-    if(this->_alertBadgeRunner != NULL) { vTaskDelete(this->_alertBadgeRunner); this->_alertBadgeRunner == NULL; }
-    if(this->_statusRunner != NULL) { vTaskDelete(this->_statusRunner); this->_statusRunner == NULL; }
+    if(this->toast_timer != NULL)
+    {
+        esp_timer_stop(this->toast_timer);
+        esp_timer_delete(this->toast_timer);
+        this->toast_timer = NULL;
+    }
+
+    this->request_task_stop(this->_touchRunner, this->_touchRunner_stop_requested, "touchRunner");
+    this->request_task_stop(this->_homing_animation, this->_homing_animation_stop_requested, "homingAnnimationRunner");
+    this->request_task_stop(this->_fas_runner, this->_fas_stop_requested, "feedsAndSpeedsWatcher");
+    this->request_task_stop(this->_feed_animation, this->_feed_animation_stop_requested, "feedAnimationRunner");
+    this->request_task_stop(this->_cutting_chart, this->_cutting_chart_stop_requested, "cuttingChartRunner");
+    this->request_task_stop(this->_toastRunner, this->_toasting_stop_requested, "toastRunner");
+    this->request_task_stop(this->_alertBadgeRunner, this->_alertBadgeRunner_stop_requested, "alertBadgeRunner");
+    this->request_task_stop(this->_statusRunner, this->_statusRunner_stop_requested, "statusRunner");
+
+    if(this->_display_mutex != NULL)
+    {
+        vSemaphoreDelete(this->_display_mutex);
+        this->_display_mutex = NULL;
+    }
+}
+
+/**
+ * @brief request a task to stop and wait for it to acknowledge exit.
+ * 
+ * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
+ * it ensures the task owns the shutdown path and the handle is cleared only after exit.
+ */
+void Display::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
+{
+    if(task_handle == NULL) return;
+
+    stop_flag.store(true, std::memory_order_release);
+    xTaskNotifyGive(task_handle);
+    const uint32_t start_ms = millis();
+    while(task_handle != NULL && (millis() - start_ms) < timeout_ms)
+    {
+        if(eTaskGetState(task_handle) == eDeleted)
+        {
+            task_handle = NULL;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if(task_handle != NULL)
+    {
+        Logger.Info_f(F("... Display: timed out waiting for %s task to exit; task owns shutdown path and retains control."), task_name);
+    }
 }
 
 /**
@@ -404,8 +446,8 @@ void Display::fas_runner(void* args)
     for(;;)
     {
         vTaskDelay(pdMS_TO_TICKS(50));
-        if(_this->_paused) { speed = -1; continue; }
-        if(_this->_fas_break)
+        if(_this->_paused.load(std::memory_order_acquire)) { speed = -1; continue; }
+        if(_this->_fas_stop_requested.load(std::memory_order_acquire))
         {
             Logger.Info(F("... Feeds and Speeds Monitoring task received termination request"));
             break;
@@ -422,7 +464,7 @@ void Display::fas_runner(void* args)
     
     Logger.Info(F("... Feeds and Speeds Monitoring complete."));
     _this->_fas_runner = NULL;
-    _this->_fas_break = false;
+    _this->_fas_stop_requested.store(false, std::memory_order_release);
     delete _args;
     vTaskDelete(NULL);
 }
@@ -441,13 +483,24 @@ void Display::touch_runner(void* args)
     bool shouldProcess = true;
     
     Logger.Info(F("...   Touch monitoring task has started."));
+    _this->_touchRunner_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
         vTaskDelay(10);
+        if(_this->_touchRunner_stop_requested.load(std::memory_order_acquire))
+        {
+            Logger.Info(F("...   Touch monitoring task received termination request."));
+            break;
+        }
         if(shouldProcess)
         {
-            // Wait for the notification to come from the event handler
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            if(_this->_touchRunner_stop_requested.load(std::memory_order_acquire))
+            {
+                Logger.Info(F("...   Touch monitoring task received termination request."));
+                break;
+            }
+
             auto& in = Inputs::get_inputs(_this->_screen);         
             if (_this->getTouch(&x, &y)) 
             {
@@ -462,7 +515,7 @@ void Display::touch_runner(void* args)
                         if(_this->_screen != old_screen) 
                         { 
                             old_screen = _this->_screen;
-                            sprite_index = UINT8_MAX; 
+                            sprite_index = UINT8_MAX;
                                     // prevent the exit command from firing as that would be for the wrong screen....
                                     // alternatively, we could save the screen for the exit, but generally, that will not be necessary
                         }
@@ -497,6 +550,7 @@ void Display::touch_runner(void* args)
     }
     Logger.Info(F("...   Touch monitoring task complete."));
     _this->_touchRunner = NULL;
+    _this->_touchRunner_stop_requested.store(false, std::memory_order_release);
     vTaskDelete(NULL);
 }
 
@@ -509,7 +563,7 @@ void Display::homeing_animation_runner(void* args)
     LGFX_Sprite *_sprite = nullptr;
     Display *_this = reinterpret_cast<Display *>(args);
     Logger.Info(F("... Homing animation started."));
-    _this->_homing_animation_break = false;
+    _this->_homing_animation_stop_requested.store(false, std::memory_order_release);
     _sprite = new LGFX_Sprite(_this);
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
@@ -520,11 +574,11 @@ void Display::homeing_animation_runner(void* args)
         { 
             _this->draw_homing_frame(_sprite, frame);
             vTaskDelay(pdMS_TO_TICKS(50));
-            if(_this->_paused || _this->_homing_animation_break) break;
+            if(_this->_paused.load(std::memory_order_acquire) || _this->_homing_animation_stop_requested.load(std::memory_order_acquire)) break;
         }
-        if(_this->_paused || _this->_homing_animation_break) break;
+        if(_this->_paused.load(std::memory_order_acquire) || _this->_homing_animation_stop_requested.load(std::memory_order_acquire)) break;
     }
-    if(!_this->_paused)
+    if(!_this->_paused.load(std::memory_order_acquire))
     {
         _this->draw_homing_frame(_sprite, 255);
         _this->actions_overlay(false);
@@ -534,7 +588,7 @@ void Display::homeing_animation_runner(void* args)
 
     Logger.Info(F("... Homing animation complete."));
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
-    _this->_homing_animation_break = false;
+    _this->_homing_animation_stop_requested.store(false, std::memory_order_release);
     _this->_homing_animation = NULL;
     vTaskDelete(NULL);
 }
@@ -553,12 +607,12 @@ void Display::feed_animation_runner(void* args)
     _sprite->createSprite(HOMING_W, HOMING_H);
     _sprite->setColorDepth(16);
     _this->set_workarea_title(manual_feeding_title, manual_feeding_title_size, "");
-    _this->_feed_animation_break = false;
+    _this->_feed_animation_stop_requested.store(false, std::memory_order_release);
     for(;;)
     {
-        if(_this->_paused || _this->_feed_animation_break) 
+        if(_this->_paused.load(std::memory_order_acquire) || _this->_feed_animation_stop_requested.load(std::memory_order_acquire)) 
         {
-            if(!_this->_paused)
+            if(!_this->_paused.load(std::memory_order_acquire))
             {
                 _this->draw_homing_frame(_sprite, 255);
                 _this->set_workarea_title(nullptr, 0, "");
@@ -578,7 +632,7 @@ void Display::feed_animation_runner(void* args)
     Logger.Info(F("... Feed animation complete."));
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
     _this->reset_feed_data(); 
-    _this->_feed_animation_break = false;
+    _this->_feed_animation_stop_requested.store(false, std::memory_order_release);
     _this->_feed_animation = NULL;
     vTaskDelete(NULL);
 }
@@ -600,14 +654,14 @@ void Display::cutting_chart_runner(void* args)
     _sprite->setColorDepth(16);
     _this->set_workarea_title(cutting_title, cutting_title_size, "");
     _this->actions_overlay(true, cutting, cutting_size, "", action_blue);
-    _this->_cutting_chart_break = false;
-    _this->_suspend_cutting_chart = false;
+    _this->_cutting_chart_stop_requested.store(false, std::memory_order_release);
+    _this->_suspend_cutting_chart.store(false, std::memory_order_release);
     _this->reset_cutting_data();
     for(uint16_t counter=0;;counter++)
     {
-        if(_this->_paused || _this->_cutting_chart_break) 
+        if(_this->_paused.load(std::memory_order_acquire) || _this->_cutting_chart_stop_requested.load(std::memory_order_acquire)) 
         {
-            if(!_this->_paused)
+            if(!_this->_paused.load(std::memory_order_acquire))
             {
                 _this->draw_homing_frame(_sprite, 255);
                 _this->set_workarea_title(nullptr, 0, "");
@@ -615,7 +669,7 @@ void Display::cutting_chart_runner(void* args)
             break;
         }
 
-        if(_this->_suspend_cutting_chart)
+        if(_this->_suspend_cutting_chart.load(std::memory_order_acquire))
         {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
@@ -640,7 +694,7 @@ void Display::cutting_chart_runner(void* args)
     _this->actions_overlay(false);
     Logger.Info(F("... Cutting chart task complete."));
     if(_sprite != nullptr) { _sprite->deleteSprite(); delete _sprite; }
-    _this->_cutting_chart_break = false;
+    _this->_cutting_chart_stop_requested.store(false, std::memory_order_release);
     _this->_cutting_chart = NULL;
     heap_caps_check_integrity_all(true);
     vTaskDelete(NULL);
