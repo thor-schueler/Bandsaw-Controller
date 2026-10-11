@@ -204,7 +204,7 @@ void Controller::manage_lights(uint8_t gpio, const char* command)
     {
         digitalWrite(LIGHT_STRIP_PIN, LOW);
         this->_display->set_button(gpio, TOUCH_TAB_STATE::OFF);
-        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);        
+        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);      
     }
     else if(is_warm)
     {

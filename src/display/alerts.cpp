@@ -144,7 +144,7 @@ void Display::alerts_badge_runner(void *args)
     Logger.Info(F("... Alerts badge monitoring task started."));   
     for(;;)
     {
-        if(_this->_paused) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
+        if(_this->_paused.load(std::memory_order_acquire)) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
         if(_this->_has_alerts) s.pushImage(0, 0, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_active);
         else s.pushImage(0, 0, ALERTS_BADGE_W, ALERTS_BADGE_H, (lgfx::rgb565_t*)alerts_inactive);
         if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)

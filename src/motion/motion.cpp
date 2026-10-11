@@ -718,6 +718,7 @@ void Motion::cutting_runner(void * args)
                                                             // 100+    very sensitive
                                                             // the threshold might need to be adjusted depending on the speed.
     if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(1, 0x30);
+    if(_this->_status_flag_callback != nullptr) _this->_status_flag_callback(0, 0x10);
                                                             // reset stallguard flags
 
     _this->_frequency = FREQUENCY_FEED_START;

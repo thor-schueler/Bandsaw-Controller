@@ -415,7 +415,7 @@ uint16_t Display::draw_stallguard_status(LGFX_Sprite &sprite, uint16_t x, uint16
 
     uint8_t sg = uint8_t(_status & 0x00FFu);
     sprite.pushImage(x, y, GLYPH_L_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)stall_margin);
-    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W + (sg < 100 ? SD_WIDTH: 0) , y, SD_WIDTH, SD_HEIGHT);
+    x = this->write_unumber_into_sprite(sprite, sg, x + GLYPH_L_W + (sg < 100 ? SD_WIDTH-2: 0) , y, SD_WIDTH, SD_HEIGHT);
     x += STATUS_GLYPH_SPACE;
     if(_s == 0x1000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_safe);
     if(_s == 0x2000) sprite.pushImage(x, y, GLYPH_W, STATUS_GLYPH_H, (lgfx::rgb565_t*)margin_stall_risk);
@@ -442,7 +442,7 @@ void Display::status_bar_runner(void *args)
     for(;;)
     {
         vTaskDelay(pdMS_TO_TICKS(50));        
-        if(_this->_paused) continue;    // do not draw taskbar when paused
+        if(_this->_paused.load(std::memory_order_acquire)) continue;                // do not draw taskbar when paused
         if(_this->_screen == SCREENS::MAIN)
         {
             if(_this->_has_toasts) continue;                                        // don't draw if a toast is showing

@@ -158,7 +158,8 @@ void Inputs::begin()
     attachInterruptArg(digitalPinToInterrupt(WHEEL_A), Inputs::handle_encoder_change, this, CHANGE);
     attachInterruptArg(digitalPinToInterrupt(WHEEL_B), Inputs::handle_encoder_change, this, CHANGE);
     attachInterruptArg(PCF8575_INT_PIN, [](void *arg){
-        Inputs *_this = static_cast<Inputs *>(arg); _this->on_PCF8575_input_changed();
+        Inputs *_this = static_cast<Inputs *>(arg); 
+        _this->on_PCF8575_input_changed();
     }, this, FALLING);
 
     Logger.Info(F("...   Create various tasks"));
@@ -270,6 +271,8 @@ void Inputs::extended_GPIO_watcher(void* args)
             Logger.Info(F("... Extended GPIO Watcher shutdown requested."));
             break;
         }
+        vTaskDelay(pdMS_TO_TICKS(50));
+                // keep this larger than 10ms to prevent bounce reads on the inputs....
 
         PCF8575::DigitalInput di = Inputs::_pcf8575->digitalReadAll();
         uint16_t bs = 0x0000;
@@ -299,13 +302,12 @@ void Inputs::extended_GPIO_watcher(void* args)
             
             for (int i = 15; i >= 0; --i)
             { 
-                if (__inputs[0].inputs[i].can_be_paused && _this->_pause) continue;
+                if (__inputs[0].inputs[i].can_be_paused && _this->_pause.load(std::memory_order_acquire)) continue;
                 if (turned_on & (1u << i) && __inputs[0].inputs[i].entry != nullptr) __inputs[0].inputs[i].entry(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
                 if (turned_off & (1u << i) && __inputs[0].inputs[i].exit != nullptr) __inputs[0].inputs[i].exit(__inputs[0].inputs[i].ext_gpio, __inputs[0].inputs[i].command.c_str());
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
-        
+
         // Wait for the notification to come from the event handler
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
@@ -353,21 +355,13 @@ void Inputs::wheel_runner(void* args)
  */
 void IRAM_ATTR Inputs::on_PCF8575_input_changed()
 {
-    static std::atomic<uint32_t> last_input_debounce_ms{0};
-
-    // debounce check to prevent double button presses. The PCF8575 can be a bit noisy and this has been 
-    // found to be a reliable way to prevent it.
+    // debounce check here is not necessary as the task will take care of that and also filter
+    // out potential doubles....
     BaseType_t xHigherPriorityTaskToken = pdFALSE;
-    const uint32_t currentTime = millis();
-    uint32_t lastDebounceTime = last_input_debounce_ms.load(std::memory_order_relaxed);
-
-    if ((currentTime - lastDebounceTime) > 250 && this->_extendedGPIOWatcher != NULL)
+    if (this->_extendedGPIOWatcher != NULL)
     {
-        if (last_input_debounce_ms.compare_exchange_weak(lastDebounceTime, currentTime, std::memory_order_relaxed, std::memory_order_relaxed))
-        {
-            vTaskNotifyGiveFromISR(this->_extendedGPIOWatcher, &xHigherPriorityTaskToken);
-            portYIELD_FROM_ISR(xHigherPriorityTaskToken);
-        }
+        vTaskNotifyGiveFromISR(this->_extendedGPIOWatcher, &xHigherPriorityTaskToken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskToken);
     }
 }
 
