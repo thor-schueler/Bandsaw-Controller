@@ -80,7 +80,7 @@ void Display::show_toast(String alert, bool add_to_alert, uint32_t timeout)
     }
     this->_has_toasts.store(true, std::memory_order_release);
     Toast_Task_Args *args = new Toast_Task_Args{ .self = this, .toast_sprite = as, .timeout = timeout};
-    xTaskCreate(slide_toast_in, "toastRunner", 2048, args, 5, &_toastRunner);
+    xTaskCreatePinnedToCore(slide_toast_in, "toastRunner", 2048, args, 5, &_toastRunner, 0);
     if(this->_toastRunner == NULL)
     {
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)

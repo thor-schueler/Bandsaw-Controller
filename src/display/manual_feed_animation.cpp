@@ -45,7 +45,7 @@ void Display::start_feed_animation(std::function<float()> get_speed)
     if(this->_feed_animation != NULL) return;           // animation taskis already running.
 
     Feed_TaskArgs *args = new Feed_TaskArgs{ this, get_speed };
-    xTaskCreatePinnedToCore(feed_animation_runner, "feedAnimationRunner", 2048, args, 1, &_feed_animation, 1);
+    xTaskCreatePinnedToCore(feed_animation_runner, "feedAnimationRunner", 2048, args, 1, &_feed_animation, 0);
 }
 
 /**

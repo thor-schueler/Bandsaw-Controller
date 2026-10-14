@@ -231,8 +231,8 @@ void Display::begin() {
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
-    xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
-    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 1);
+    xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 0);
+    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 0);
     
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
@@ -275,32 +275,11 @@ void Display::draw_canvas()
     {
         this->setTextColor(TFT_WHITE);
         this->setTextSize(1);
-
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
-        //this->pushImage(STATUS_X, STATUS_Y, status_width, status_height, (lgfx::rgb565_t*)status);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
         xSemaphoreGive(this->_display_mutex);
     }    
-}
-
-
-/**
- * @brief Draws the taskbar.
- * 
- */
-void Display::draw_status_bar()
-{
-    LGFX_Sprite taskbar(this);
-    taskbar.setColorDepth(16);
-    taskbar.createSprite(status_width, status_height);
-    taskbar.pushImage(0, 0, status_width, status_height, (lgfx::rgb565_t*)status);
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    {  
-        taskbar.pushSprite(STATUS_X, STATUS_Y);
-        xSemaphoreGive(this->_display_mutex);
-    }
-    taskbar.deleteSprite();
 }
 
 /**
@@ -503,9 +482,14 @@ void Display::touch_runner(void* args)
                 Logger.Info(F("...   Touch monitoring task received termination request."));
                 break;
             }
-
-            auto& in = Inputs::get_inputs(_this->_screen);         
-            if (_this->getTouch(&x, &y)) 
+            auto& in = Inputs::get_inputs(_this->_screen); 
+            bool hasTouch = false;
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            {     
+                hasTouch = _this->getTouch(&x, &y);        
+                xSemaphoreGive(_this->_display_mutex);
+            }
+            if (hasTouch) 
             {
                 for(int i=0; i<touch_areas[_this->_screen].count; i++) 
                 {

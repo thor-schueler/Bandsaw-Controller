@@ -164,7 +164,7 @@ void Inputs::begin()
 
     Logger.Info(F("...   Create various tasks"));
     _wheelRunner_stop_requested.store(false, std::memory_order_release);
-    xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 0);
+    xTaskCreatePinnedToCore(wheel_runner, "wheelRunner", 2560, this, 1, &_wheelRunner, 1);
 
     Logger.Info(F("...   Done."));
 }
@@ -179,7 +179,7 @@ void Inputs::start_monitoring()
     {
         Logger.Info(F("...   Configure Extended GPIO monitoring task"));
         Inputs::_extended_gpio_watcher_stop_requested.store(false, std::memory_order_release);
-        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 4096, this, 1, &_extendedGPIOWatcher, 0);
+        xTaskCreatePinnedToCore(extended_GPIO_watcher, "extendedGPIOWatcher", 4096, this, 1, &_extendedGPIOWatcher, 1);
     }
 }
 

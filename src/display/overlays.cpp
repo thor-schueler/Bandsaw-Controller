@@ -59,7 +59,7 @@ void Display::feeds_and_speeds_overlay(bool active, float speed, bool monitor, s
                 Logger.Info(F("... Creating Feeds and Speeds Monitoring task."));
                 this->_fas_stop_requested.store(false, std::memory_order_release);
                 FAS_TaskArgs* args = new FAS_TaskArgs { this, std::move(get_speed) };
-                xTaskCreatePinnedToCore(fas_runner, "feedsAndSpeedsWatcher", 4096, args, 1, &_fas_runner, 1);
+                xTaskCreatePinnedToCore(fas_runner, "feedsAndSpeedsWatcher", 4096, args, 1, &_fas_runner, 0);
             }
         }
     }

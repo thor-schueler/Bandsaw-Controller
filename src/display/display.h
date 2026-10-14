@@ -284,12 +284,6 @@ public:
     void hide_toast();
 
     /**
-     * @brief Draws the taskbar.
-     * 
-     */
-    void draw_status_bar();
-
-    /**
      * @brief Sets or clears the flags of the status value.
      * @param op - the operation to perform. SET or CLEAR.
      * @param value - the bit mask for the flags
