@@ -131,6 +131,11 @@ extern const uint16_t stall_margin[] PROGMEM;
 extern const uint16_t margin_stall_risk[] PROGMEM;
 extern const uint16_t margin_stall[] PROGMEM;
 extern const uint16_t margin_safe[] PROGMEM;
+extern const uint16_t settings_title[] PROGMEM;
+extern const uint16_t settings_controls[] PROGMEM;
+extern const uint16_t settings_general[] PROGMEM;
+extern const uint16_t settings_jobs[] PROGMEM;
+extern const uint16_t settings_timeouts[] PROGMEM;
 
 extern const size_t homing_title_size;
 extern const size_t homing_size;
@@ -139,6 +144,7 @@ extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 extern const size_t cutting_size;
 extern const size_t alerts_title_size;
+extern const size_t settings_title_size;
 
 static constexpr uint16_t status_width = 401;
 static constexpr uint16_t status_height = 21;
@@ -463,6 +469,12 @@ public:
      * @param forward - true to page forward, false to page backward
      */
     void page_alerts(bool forward);
+
+    /**
+     * @brief Toggles the settings screen on an off.
+     * 
+     */
+    void toggle_settings();
 
     /**
      * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.

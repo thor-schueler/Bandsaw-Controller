@@ -133,6 +133,15 @@ class Controller
          */
         void clear_alerts(uint8_t gpio, const char* command);
 
+        /**
+         * @brief Toggles the Settings View if appropriate. Note that settings might not be able to be engaged
+         * during certain operations
+         * 
+         * @param gpio - GPIO for the home toggle.
+         * @param command - Command name passed in from the input watcher
+         */
+        void view_settings(uint8_t gpio, const char* command);
+
     private:
 
         /**

@@ -66,12 +66,15 @@ void Controller::begin()
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
+    this->_inputs->register_command(SCREENS::MAIN, 16, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::MAIN, 17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
 
     this->_inputs->register_command(SCREENS::ALERTS, 3, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 2, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 1, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 0, std::bind(&Controller::clear_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+
+    this->_inputs->register_command(SCREENS::SETTINGS, 3, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->begin();
 
 
@@ -175,6 +178,58 @@ void Controller::view_alerts(uint8_t gpio, const char* command)
         // page alerts view
         //
         this->_display->page_alerts( gpio == 2 ? true : false);
+    }
+}
+
+/**
+ * @brief Toggles the Settings View if appropriate. Note that settings might not be able to be engaged
+ * during certain operations
+ * 
+ * @param gpio - GPIO for the home toggle.
+ * @param command - Command name passed in from the input watcher
+ */
+void Controller::view_settings(uint8_t gpio, const char* command)
+{
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
+            // do nothing when EMS (active low) is active.
+
+    if(this->_motion->get_state() == MOTION_STATE::HOMING)
+    {
+        this->_display->show_toast(F("Cannot view settings while homing is in progress"));
+        Logger.Info(F("... Cannot view settings while homing is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_state() == MOTION_STATE::FEEDING)
+    {
+        this->_display->show_toast(F("Cannot view settings while automated cutting is in progress"));
+        Logger.Info(F("... Cannot view settings while automated cutting is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
+    {
+        this->_display->show_toast(F("Cannot view settings while blade is running"));
+        Logger.Info(F("... Cannot view settings while blade is running. Ignore..."));
+        return;
+    }
+
+    if(gpio == 3 || gpio == 16)
+    {
+        //
+        // switch to settings view
+        //
+        this->_display->toggle_settings();
+        if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+        else
+        {
+            this->_motion->unlock();
+            this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+            this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+            this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+            this->_display->resume_tasks();
+            this->_inputs->resume_monitoring();
+            this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+            this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        }
     }
 }
 

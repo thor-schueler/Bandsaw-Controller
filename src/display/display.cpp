@@ -35,7 +35,10 @@ touch_area_t alerts_touch_areas[] = {
 };
 
 touch_area_t settings_touch_areas[] = {
-  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false },
+  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false },
+  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 3, true },
+  { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true } 
 };
 
 touch_area_t ems_touch_areas[] = {

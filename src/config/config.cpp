@@ -33,7 +33,7 @@ bool read_config_section(const char* name, T& s)
     Preferences prefs;
     prefs.begin("config", true);
     size_t len = prefs.getBytesLength(name); 
-    if (len == sizeof(T)) Logger.Error_f(F("Length of settings section %s is incorrect. Expecting %u, got %u."), name, sizeof(T), len);
+    if (len != sizeof(T)) Logger.Error_f(F("Length of settings section %s is incorrect. Expecting %u, got %u."), name, sizeof(T), len);
     else
     {
         prefs.getBytes(name, &temp, sizeof(T));
@@ -50,13 +50,39 @@ bool read_config_section(const char* name, T& s)
     return false;
 }
 
-template<typename T>
-void print_section(const char* name, const T& s)
+template<typename T, typename FI>
+void print_section(const char* name, const T& s, const FI& f)
 {
     static_assert(std::is_base_of_v<settings_t, T>, "T must derive from settings_t");
     Logger.Info_f(F("Setting for section %s"), name);
     Logger.Info_f(F("   Settings Version: %u"), s.version);
     Logger.Info_f(F("   Magic cookie: 0x%04X"), s.magic);
+
+    for (const auto& field : f) 
+    {
+        const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&s) + field.offset;
+        switch(field.type)
+        {
+            case field_type_t::bool_t:
+                Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
+                break;
+            case field_type_t::uint8_t:
+                Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint8_t*>(ptr));
+                break; 
+            case field_type_t::uint16_t:
+                Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint16_t*>(ptr));
+                break;     
+            case field_type_t::uint32_t:
+                Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint32_t*>(ptr));
+                break;            
+            case field_type_t::float_t:
+                Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const float*>(ptr));
+                break;
+            default:
+                Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
+        }
+    }
+
     Logger.Info(F(""));
 }
 
@@ -74,7 +100,7 @@ Config::Config()
  */
 Config::~Config()
 {
-    this->save();
+    this->store();
 }
 
 /**
@@ -90,7 +116,7 @@ void Config::load()
 /**
  * @brief Persists the settings and configuration to NVS.
  */
-void Config::save()
+void Config::store()
 {
     this->general.crc = calculate_crc(this->general);
     this->jobs.crc = calculate_crc(this->jobs);
@@ -110,7 +136,7 @@ void Config::save()
 void Config::print()
 {
     if(Config::_instance == nullptr) Config::_instance = new Config();
-    print_section("General", Config::General());
-    print_section("Jobs", Config::Jobs());
-    print_section("Timeouts", Config::Timeouts());
+    print_section("General", Config::General(), general_fields);
+    print_section("Jobs", Config::Jobs(), jobs_fields);
+    print_section("Timeouts", Config::Timeouts(), timeout_fields);
 }

@@ -39,7 +39,7 @@ std::array<input_entry_t, 5> __inputs_settings = {{
     { nullptr, nullptr, 0, "", true },
     { nullptr, nullptr, 1, "", true },
     { nullptr, nullptr, 2, "", true },
-    { nullptr, nullptr, 3, "", true },
+    { nullptr, nullptr, 3, "Return Home", true },
     { nullptr, nullptr, 4, "", true }
 }};
 
