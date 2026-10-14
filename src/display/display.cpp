@@ -35,10 +35,14 @@ touch_area_t alerts_touch_areas[] = {
 };
 
 touch_area_t settings_touch_areas[] = {
-  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false },
-  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false },
-  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 3, true },
-  { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true } 
+  { 359, 91, 464, 125, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 0, true },
+  { 359, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
+  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 2, true },
+  { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true }, 
+  { 105, 105, 165, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }, 
+  { 190, 105, 250, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 4, true }, 
+  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true } 
+
 };
 
 touch_area_t ems_touch_areas[] = {
@@ -216,7 +220,7 @@ void Display::begin() {
     Logger.Info(F("... Initializing display controller..."));
     Logger.Info(F("....Generating Mutexes"));
     _display_mutex = xSemaphoreCreateMutex(); 
-
+ 
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
    
@@ -228,6 +232,8 @@ void Display::begin() {
         this->fillScreen(TFT_BLACK);
         xSemaphoreGive(this->_display_mutex);
     }
+    for (auto& s : this->get_settings_screens()) s.entry = std::bind(&Display::draw_settings_detail, this, std::placeholders::_1, std::placeholders::_2);
+
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
@@ -384,8 +390,9 @@ void Display::set_workarea_title(const uint16_t* title_image, size_t title_image
     if(!title.isEmpty())
     {
         title_sprite.setTextColor(LCARS_CYAN, TFT_BLACK);
-        title_sprite.setFont(&fonts::Font2);
-        title_sprite.drawString(title.c_str(), 0, 0);
+        title_sprite.setTextSize(1);
+        title_sprite.setFont(&fonts::FreeSans9pt7b);
+        title_sprite.drawString(title.c_str(), title_image != nullptr ? title_image_size/20 : 0, 1);
     }
     if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
     {     

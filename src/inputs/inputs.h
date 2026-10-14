@@ -5,10 +5,8 @@
 #define _INPUTS_H_
 
 #include "Arduino.h"
-#include <functional>
 #include <atomic>
 #include "PCF8575.h"
-#include "src/logging/SerialLogger.h"
 
 #define EXPANDER_IRQ_PIN 34
 #define EXPANDER_I2C_SDA_PIN 27

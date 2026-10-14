@@ -74,7 +74,13 @@ void Controller::begin()
     this->_inputs->register_command(SCREENS::ALERTS, 1, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 0, std::bind(&Controller::clear_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
 
-    this->_inputs->register_command(SCREENS::SETTINGS, 3, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::SETTINGS, 0, std::bind(&Display::default_settings, this->_display, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::SETTINGS, 1, std::bind(&Display::save_settings, this->_display, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+
+    this->_inputs->register_command(SCREENS::SETTINGS, 2, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::SETTINGS, 3, (this->_display->get_settings_screens())[0].entry, (this->_display->get_settings_screens())[0].exit, (this->_display->get_settings_screens())[0].name, false);
+    this->_inputs->register_command(SCREENS::SETTINGS, 4, (this->_display->get_settings_screens())[1].entry, (this->_display->get_settings_screens())[1].exit, (this->_display->get_settings_screens())[1].name, false);
+    this->_inputs->register_command(SCREENS::SETTINGS, 5, (this->_display->get_settings_screens())[2].entry, (this->_display->get_settings_screens())[2].exit, (this->_display->get_settings_screens())[2].name, false);        
     this->_inputs->begin();
 
 
@@ -212,13 +218,17 @@ void Controller::view_settings(uint8_t gpio, const char* command)
         return;
     }
 
-    if(gpio == 3 || gpio == 16)
+    if(gpio == 2 || gpio == 16)
     {
-        //
-        // switch to settings view
-        //
         this->_display->toggle_settings();
-        if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+            //
+            // switch to settings view
+            // this will also set current screen appropriately.
+            //
+        if(this->_display->get_current_screen() == SCREENS::SETTINGS)
+        {
+            if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+        }       
         else
         {
             this->_motion->unlock();
