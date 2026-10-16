@@ -5,6 +5,7 @@
 #include "display.h"
 #include "src/inputs/inputs.h"
 #include "src/config/config.h"
+#include "dialog/dialog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -21,13 +22,14 @@ bool __needs_saving = false;
 
 /**
  * @brief Toggles the settings screen on an off.
- * 
+ * @param force_on - true to force the settings display on. Defaults to false. 
  */
-void Display::toggle_settings()
+void Display::toggle_settings(bool force_on)
 {
-    LGFX_Sprite controls(this);
-    if(this->_screen != SCREENS::SETTINGS || (this->_screen == SCREENS::SETTINGS && __current_screen != SETTING_SCREENS::INVALID))
+    
+    if(this->_screen != SCREENS::SETTINGS || (this->_screen == SCREENS::SETTINGS && __current_screen != SETTING_SCREENS::INVALID) || force_on)
     {
+        LGFX_Sprite controls(this);
         _screen = SCREENS::SETTINGS;
         this->pause_tasks();
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -46,12 +48,33 @@ void Display::toggle_settings()
         controls.deleteSprite();
     }
     else
-    {
-        _screen = SCREENS::MAIN;
-        this->draw_canvas();
-        this->resume_tasks();
-            // we are on the main settings screen. 
-            // return to the main screen
+    {   if(__needs_saving)
+        {
+            Dialog d(this);
+            Logger.Info("Entering Dialog");
+            if(d.show("Discard changes and exit?"))
+            {
+                Logger.Info("Dialog done - proceed");
+                _screen = SCREENS::MAIN;
+                this->draw_canvas();
+                this->resume_tasks();
+                    // we are on the main settings screen. 
+                    // return to the main screen
+            }
+            else
+            {
+                Logger.Info("Dialog done - cancel");
+                this->toggle_settings(true);
+            }
+        }
+        else
+        {
+            _screen = SCREENS::MAIN;
+            this->draw_canvas();
+            this->resume_tasks();
+                // we are on the main settings screen. 
+                // return to the main screen
+        }
     }
     __current_screen = SETTING_SCREENS::INVALID;
 }

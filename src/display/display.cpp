@@ -105,8 +105,6 @@ Display::Display() {
       cfg.offset_x      = 0;
       cfg.offset_y      = 0;
       cfg.offset_rotation = 0;
-      cfg.dummy_read_pixel = 8;
-      cfg.dummy_read_bits  = 1;
       cfg.readable      = true;
       cfg.invert        = false;
       cfg.rgb_order     = false;
@@ -621,6 +619,7 @@ void Display::feed_animation_runner(void* args)
             _sprite->pushSprite(88, 95);
             xSemaphoreGive(_this->_display_mutex);
         }
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     Logger.Info(F("... Feed animation complete."));
@@ -637,7 +636,6 @@ void Display::feed_animation_runner(void* args)
  */    
 void Display::cutting_chart_runner(void* args)
 {
-    //uint8_t i=20;
     LGFX_Sprite *_sprite = nullptr;
     Cut_TaskArgs *_args = reinterpret_cast<Cut_TaskArgs *>(args);
     Display *_this = _args->self;
@@ -692,4 +690,61 @@ void Display::cutting_chart_runner(void* args)
     _this->_cutting_chart = NULL;
     heap_caps_check_integrity_all(true);
     vTaskDelete(NULL);
+}
+
+
+/**
+ * @brief Prints the screen or a sprite to the console.
+ * 
+ * @param sprite - The sprite to print. To print entire screen, supply a nullptr.
+ */
+void Display::print_screen(LGFX_Sprite *sprite)
+{
+    bool got_semaphore = false;
+    Logger.Info_f("Is readable: %u", this->isReadable());
+    
+    if(sprite == nullptr) got_semaphore = xSemaphoreTake(this->_display_mutex, portMAX_DELAY);
+    if(sprite != nullptr || got_semaphore)
+    { 
+
+        if(false)
+        {
+            this->writeCommand(0x04);   // RDDID
+            uint8_t id0 = this->readData8(0);
+            uint8_t id1 = this->readData8(1);
+            uint8_t id2 = this->readData8(2);
+            uint8_t id3 = this->readData8(3);
+            Serial.printf("RDDID: %02X %02X %02X %02X\n", id0, id1, id2, id3);
+
+            this->writeCommand(0x09);   // RDDST
+            for (int i = 0; i < 4; i++) Serial.printf("%02X ", this->readData8(i));
+            Serial.println();
+
+            this->writeCommand(0x0A);   // RDDPM
+            Serial.printf("RDDPM=%02X\n", this->readData8(0));
+        }
+
+        const int w = sprite == nullptr ? this->width() : sprite->width();
+        const int h = sprite == nullptr ? this->height() : sprite->height();
+        uint16_t* buf = sprite == nullptr? nullptr : (uint16_t*)sprite->getBuffer();
+        uint16_t line[w];
+        Serial.printf("P3\n%d %d\n255\n", w, h);
+
+        for (int y = 0; y < h; y++)
+        {
+            if(sprite == nullptr) this->readRect(0, y, w, 1, line);
+            for (int x = 0; x < w; x++)
+            {
+                uint16_t c = sprite == nullptr ? line[x] : buf[y * w + x]; ;
+                
+                c = (c >> 8) | (c << 8);
+                uint8_t r = ((c >> 11) & 0x1F) << 3;
+                uint8_t g = ((c >> 5)  & 0x3F) << 2;
+                uint8_t b = ( c        & 0x1F) << 3;
+                Serial.printf("%u %u %u ", r, g, b);
+            }
+            Serial.println();
+        }
+        if(got_semaphore) xSemaphoreGive(this->_display_mutex);
+    }
 }

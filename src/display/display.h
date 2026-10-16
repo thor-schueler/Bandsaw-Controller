@@ -502,9 +502,9 @@ public:
 
     /**
      * @brief Toggles the settings screen on an off.
-     * 
+     * @param force_on - true to force the settings display on. Defaults to false. 
      */
-    void toggle_settings();
+    void toggle_settings(bool force_on=false);
 
     /**
      * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
@@ -559,6 +559,13 @@ public:
      */
     void default_settings(uint8_t gpio, const char*);
 
+    /**
+     * @brief Prints the screen or a sprite to the console.
+     * 
+     * @param sprite - The sprite to print. To print entire screen, supply a nullptr.
+     */
+    void print_screen(LGFX_Sprite *sprite);
+
   protected:
 
     /**
@@ -605,9 +612,7 @@ public:
      */
     static void alerts_badge_runner(void *args);
 
-    lgfx::Panel_ST7796 _panel;
-    lgfx::Bus_SPI _bus;
-    lgfx::Touch_XPT2046 _touch;
+
 
   private:
 
@@ -888,6 +893,10 @@ public:
 
     void draw_settings_detail(uint8_t gpio, const char*);
     #pragma endregion
+
+    lgfx::Panel_ST7796 _panel;
+    lgfx::Bus_SPI _bus;
+    lgfx::Touch_XPT2046 _touch;
 
     std::atomic<bool> _paused {false};
     std::atomic<bool> _homing_animation_stop_requested {false};
