@@ -4,6 +4,7 @@
 #include "version.h"
 #include "display.h"
 #include "src/inputs/inputs.h"
+#include "dialog/dialog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -80,7 +81,7 @@ void Display::show_toast(String alert, bool add_to_alert, uint32_t timeout)
     }
     this->_has_toasts.store(true, std::memory_order_release);
     Toast_Task_Args *args = new Toast_Task_Args{ .self = this, .toast_sprite = as, .timeout = timeout};
-    xTaskCreate(slide_toast_in, "toastRunner", 2048, args, 5, &_toastRunner);
+    xTaskCreatePinnedToCore(slide_toast_in, "toastRunner", 2048, args, 5, &_toastRunner, 0);
     if(this->_toastRunner == NULL)
     {
         if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
@@ -166,9 +167,10 @@ void Display::alerts_badge_runner(void *args)
  */
 void Display::toggle_alerts()
 {
-    LGFX_Sprite controls(this);
+    
     if(_screen != SCREENS::ALERTS)
     {
+        LGFX_Sprite controls(this);
         _has_alerts = false;
         _screen = SCREENS::ALERTS;
         this->pause_tasks();
@@ -202,12 +204,32 @@ void Display::toggle_alerts()
  */
 void Display::clear_alerts()
 {
-    memset(_alerts, 0, sizeof(_alerts));
-    _has_alerts = false;
-    _count = 0;
-    _start = 0;
-    _index = 0;
-    this->write_alerts(_start, ALERTS_PAGE_SIZE, _index);
+    if(_count > 0)
+    {
+        LGFX_Sprite controls(this);
+        Dialog d(this);
+        if(d.show("Clear and discard all alerts?"))
+        {
+            memset(_alerts, 0, sizeof(_alerts));
+            _has_alerts = false;
+            _count = 0;
+            _start = 0;
+            _index = 0;
+        }
+        this->draw_canvas();
+        this->set_workarea_title(alerts_title, alerts_title_size, "");
+        controls.setColorDepth(16);
+        controls.createSprite(127, 143);
+        controls.fillSprite(TFT_BLACK);
+        controls.pushImage(0, 0, 127, 143, (lgfx::rgb565_t*)alerts_controls);
+        if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        { 
+            controls.pushSprite(353, 58);
+            xSemaphoreGive(this->_display_mutex);
+        }
+        controls.deleteSprite();
+        this->write_alerts(_start, ALERTS_PAGE_SIZE, _index);
+    }
 }
 
 /**

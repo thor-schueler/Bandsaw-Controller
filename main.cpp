@@ -24,22 +24,13 @@
 
 // local libraries
 #include "version.h"
-//#include "src/config/config_page.h"
+#include "src/config/config.h"
 #include "src/logging/SerialLogger.h"
 #include "src/controller/controller.h"
 
 #include <TMCStepper.h>
 #include "driver/ledc.h"
 
-//#define TELEMETRY_FREQUENCY_MILLISECS 120000
-//#define AP_ENABLE_PIN 5
-
-//static Config config;
-//Wheel *wheel = NULL;
-//TaskHandle_t wifi_task = NULL;
-//BluetoothSerial bt;
-//static bool has_wifi = true;
-//static bool config_mode = false;
 
 #ifdef SET_LOOP_TASK_STACK_SIZE
 SET_LOOP_TASK_STACK_SIZE(3052);
@@ -59,20 +50,13 @@ Controller* controller = nullptr;
  */
 void setup()
 {
-  delay(2000);
+  vTaskDelay(2000);
   // Enable PSRAM if available. This will allow us to use the PSRAM for dynamic memory allocation, 
   // which is crucial for the display and other memory intensive operations.
   // esp_log_level_set("*", ESP_LOG_NONE);
   if (psramFound()) {
     heap_caps_malloc_extmem_enable(256);   // allow malloc/new to use PSRAM, threshold in bytes
   }
-
-  //
-  // Initialize configuration data from EEPROM
-  //
-  //config.Initialize(false);
-  //Command_t::merge(&config.Commands, &Wheel::Commands);
-  //Logger.SetSpeed(config.baud_rate);
 
   //
   // Startup
@@ -85,7 +69,10 @@ void setup()
   Logger.Info_f(F("Total PSRAM: %d"), ESP.getPsramSize()); 
   Logger.Info_f(F("Free PSRAM: %d"), ESP.getFreePsram());
   Logger.Info(F("... Startup"));
-  //config.Print();
+  Config::print();
+  //Logger.Info_f("%u", Config::Jobs().use_task_for_manual_feeding);
+  //Config::Jobs().use_task_for_manual_feeding = true;
+  Config::save();
   
   controller = new Controller();
   controller->begin();

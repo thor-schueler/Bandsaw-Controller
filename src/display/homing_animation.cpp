@@ -17,7 +17,7 @@
 void Display::start_homing_animation()
 {
     if(this->_homing_animation != NULL) return;           // animation taskis already running.
-    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 1);
+    xTaskCreatePinnedToCore(homeing_animation_runner, "homingAnimationRunner", 2048, this, 1, &_homing_animation, 0);
 }
 
 /**

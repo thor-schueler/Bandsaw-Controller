@@ -35,7 +35,14 @@ touch_area_t alerts_touch_areas[] = {
 };
 
 touch_area_t settings_touch_areas[] = {
-  { UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, UINT8_MAX, false }
+  { 359, 91, 464, 125, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 0, true },
+  { 359, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
+  { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 2, true },
+  { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true }, 
+  { 105, 105, 165, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }, 
+  { 190, 105, 250, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 4, true }, 
+  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true } 
+
 };
 
 touch_area_t ems_touch_areas[] = {
@@ -98,8 +105,6 @@ Display::Display() {
       cfg.offset_x      = 0;
       cfg.offset_y      = 0;
       cfg.offset_rotation = 0;
-      cfg.dummy_read_pixel = 8;
-      cfg.dummy_read_bits  = 1;
       cfg.readable      = true;
       cfg.invert        = false;
       cfg.rgb_order     = false;
@@ -213,7 +218,7 @@ void Display::begin() {
     Logger.Info(F("... Initializing display controller..."));
     Logger.Info(F("....Generating Mutexes"));
     _display_mutex = xSemaphoreCreateMutex(); 
-
+ 
     Logger.Info(F("...   Set touch IRQ input pin"));
     pinMode(TOUCH_IRQ_PIN, INPUT_PULLUP); 
    
@@ -225,11 +230,13 @@ void Display::begin() {
         this->fillScreen(TFT_BLACK);
         xSemaphoreGive(this->_display_mutex);
     }
+    for (auto& s : this->get_settings_screens()) s.entry = std::bind(&Display::draw_settings_detail, this, std::placeholders::_1, std::placeholders::_2);
+
 
     Logger.Info(F("...   Setup various tasks"));
     xTaskCreatePinnedToCore(touch_runner, "touchRunner", 3072, this, 1, &_touchRunner, 0);
-    xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 1);
-    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 1);
+    xTaskCreatePinnedToCore(alerts_badge_runner, "alertBadgeRunner", 2048, this, 1, &_alertBadgeRunner, 0);
+    xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 0);
     
     esp_timer_create_args_t args = {
             .callback = [](void* arg)
@@ -272,32 +279,11 @@ void Display::draw_canvas()
     {
         this->setTextColor(TFT_WHITE);
         this->setTextSize(1);
-
         this->pushImage(0, 0, 480, 320, (lgfx::rgb565_t*)background);
-        //this->pushImage(STATUS_X, STATUS_Y, status_width, status_height, (lgfx::rgb565_t*)status);
         this->setCursor(370, 5);
         this->printf("%d.%d.%d", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_BUILD_NUMBER);
         xSemaphoreGive(this->_display_mutex);
     }    
-}
-
-
-/**
- * @brief Draws the taskbar.
- * 
- */
-void Display::draw_status_bar()
-{
-    LGFX_Sprite taskbar(this);
-    taskbar.setColorDepth(16);
-    taskbar.createSprite(status_width, status_height);
-    taskbar.pushImage(0, 0, status_width, status_height, (lgfx::rgb565_t*)status);
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    {  
-        taskbar.pushSprite(STATUS_X, STATUS_Y);
-        xSemaphoreGive(this->_display_mutex);
-    }
-    taskbar.deleteSprite();
 }
 
 /**
@@ -402,8 +388,9 @@ void Display::set_workarea_title(const uint16_t* title_image, size_t title_image
     if(!title.isEmpty())
     {
         title_sprite.setTextColor(LCARS_CYAN, TFT_BLACK);
-        title_sprite.setFont(&fonts::Font2);
-        title_sprite.drawString(title.c_str(), 0, 0);
+        title_sprite.setTextSize(1);
+        title_sprite.setFont(&fonts::FreeSans9pt7b);
+        title_sprite.drawString(title.c_str(), title_image != nullptr ? title_image_size/20 : 0, 1);
     }
     if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
     {     
@@ -500,9 +487,14 @@ void Display::touch_runner(void* args)
                 Logger.Info(F("...   Touch monitoring task received termination request."));
                 break;
             }
-
-            auto& in = Inputs::get_inputs(_this->_screen);         
-            if (_this->getTouch(&x, &y)) 
+            auto& in = Inputs::get_inputs(_this->_screen); 
+            bool hasTouch = false;
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            {     
+                hasTouch = _this->getTouch(&x, &y);        
+                xSemaphoreGive(_this->_display_mutex);
+            }
+            if (hasTouch) 
             {
                 for(int i=0; i<touch_areas[_this->_screen].count; i++) 
                 {
@@ -627,6 +619,7 @@ void Display::feed_animation_runner(void* args)
             _sprite->pushSprite(88, 95);
             xSemaphoreGive(_this->_display_mutex);
         }
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     Logger.Info(F("... Feed animation complete."));
@@ -643,7 +636,6 @@ void Display::feed_animation_runner(void* args)
  */    
 void Display::cutting_chart_runner(void* args)
 {
-    //uint8_t i=20;
     LGFX_Sprite *_sprite = nullptr;
     Cut_TaskArgs *_args = reinterpret_cast<Cut_TaskArgs *>(args);
     Display *_this = _args->self;
@@ -698,4 +690,61 @@ void Display::cutting_chart_runner(void* args)
     _this->_cutting_chart = NULL;
     heap_caps_check_integrity_all(true);
     vTaskDelete(NULL);
+}
+
+
+/**
+ * @brief Prints the screen or a sprite to the console.
+ * 
+ * @param sprite - The sprite to print. To print entire screen, supply a nullptr.
+ */
+void Display::print_screen(LGFX_Sprite *sprite)
+{
+    bool got_semaphore = false;
+    Logger.Info_f("Is readable: %u", this->isReadable());
+    
+    if(sprite == nullptr) got_semaphore = xSemaphoreTake(this->_display_mutex, portMAX_DELAY);
+    if(sprite != nullptr || got_semaphore)
+    { 
+
+        if(false)
+        {
+            this->writeCommand(0x04);   // RDDID
+            uint8_t id0 = this->readData8(0);
+            uint8_t id1 = this->readData8(1);
+            uint8_t id2 = this->readData8(2);
+            uint8_t id3 = this->readData8(3);
+            Serial.printf("RDDID: %02X %02X %02X %02X\n", id0, id1, id2, id3);
+
+            this->writeCommand(0x09);   // RDDST
+            for (int i = 0; i < 4; i++) Serial.printf("%02X ", this->readData8(i));
+            Serial.println();
+
+            this->writeCommand(0x0A);   // RDDPM
+            Serial.printf("RDDPM=%02X\n", this->readData8(0));
+        }
+
+        const int w = sprite == nullptr ? this->width() : sprite->width();
+        const int h = sprite == nullptr ? this->height() : sprite->height();
+        uint16_t* buf = sprite == nullptr? nullptr : (uint16_t*)sprite->getBuffer();
+        uint16_t line[w];
+        Serial.printf("P3\n%d %d\n255\n", w, h);
+
+        for (int y = 0; y < h; y++)
+        {
+            if(sprite == nullptr) this->readRect(0, y, w, 1, line);
+            for (int x = 0; x < w; x++)
+            {
+                uint16_t c = sprite == nullptr ? line[x] : buf[y * w + x]; ;
+                
+                c = (c >> 8) | (c << 8);
+                uint8_t r = ((c >> 11) & 0x1F) << 3;
+                uint8_t g = ((c >> 5)  & 0x3F) << 2;
+                uint8_t b = ( c        & 0x1F) << 3;
+                Serial.printf("%u %u %u ", r, g, b);
+            }
+            Serial.println();
+        }
+        if(got_semaphore) xSemaphoreGive(this->_display_mutex);
+    }
 }

@@ -66,12 +66,21 @@ void Controller::begin()
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_LUBE_ON, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_LUBE_AUTO, std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::manage_coolant, this, std::placeholders::_1, std::placeholders::_2), true);
     this->_inputs->register_command(SCREENS::MAIN, EXT_GPIO_EMS, std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), std::bind(&Controller::EMS_change, this, std::placeholders::_1, std::placeholders::_2), false);
+    this->_inputs->register_command(SCREENS::MAIN, 16, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::MAIN, 17, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
 
     this->_inputs->register_command(SCREENS::ALERTS, 3, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 2, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 1, std::bind(&Controller::view_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
     this->_inputs->register_command(SCREENS::ALERTS, 0, std::bind(&Controller::clear_alerts, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+
+    this->_inputs->register_command(SCREENS::SETTINGS, 0, std::bind(&Display::default_settings, this->_display, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::SETTINGS, 1, std::bind(&Display::save_settings, this->_display, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+
+    this->_inputs->register_command(SCREENS::SETTINGS, 2, std::bind(&Controller::view_settings, this, std::placeholders::_1, std::placeholders::_2), nullptr, true);
+    this->_inputs->register_command(SCREENS::SETTINGS, 3, (this->_display->get_settings_screens())[0].entry, (this->_display->get_settings_screens())[0].exit, (this->_display->get_settings_screens())[0].name, false);
+    this->_inputs->register_command(SCREENS::SETTINGS, 4, (this->_display->get_settings_screens())[1].entry, (this->_display->get_settings_screens())[1].exit, (this->_display->get_settings_screens())[1].name, false);
+    this->_inputs->register_command(SCREENS::SETTINGS, 5, (this->_display->get_settings_screens())[2].entry, (this->_display->get_settings_screens())[2].exit, (this->_display->get_settings_screens())[2].name, false);        
     this->_inputs->begin();
 
 
@@ -91,6 +100,7 @@ void Controller::begin()
         this->_display->show_toast(F("Blade stopped due to safety criteria"));  
         if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
         {
+            vTaskDelay(pdMS_TO_TICKS(250));
             this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
             this->_display->actions_overlay(false);
         }
@@ -175,6 +185,62 @@ void Controller::view_alerts(uint8_t gpio, const char* command)
         // page alerts view
         //
         this->_display->page_alerts( gpio == 2 ? true : false);
+    }
+}
+
+/**
+ * @brief Toggles the Settings View if appropriate. Note that settings might not be able to be engaged
+ * during certain operations
+ * 
+ * @param gpio - GPIO for the home toggle.
+ * @param command - Command name passed in from the input watcher
+ */
+void Controller::view_settings(uint8_t gpio, const char* command)
+{
+    if(!this->_inputs->digitalReadEx(EXT_GPIO_EMS)) return;
+            // do nothing when EMS (active low) is active.
+
+    if(this->_motion->get_state() == MOTION_STATE::HOMING)
+    {
+        this->_display->show_toast(F("Cannot view settings while homing is in progress"));
+        Logger.Info(F("... Cannot view settings while homing is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_state() == MOTION_STATE::FEEDING)
+    {
+        this->_display->show_toast(F("Cannot view settings while automated cutting is in progress"));
+        Logger.Info(F("... Cannot view settings while automated cutting is in progress. Ignore..."));
+        return;
+    }
+    if(this->_motion->get_blade_status() == BLADE_STATE::RUNNING)
+    {
+        this->_display->show_toast(F("Cannot view settings while blade is running"));
+        Logger.Info(F("... Cannot view settings while blade is running. Ignore..."));
+        return;
+    }
+
+    if(gpio == 2 || gpio == 16)
+    {
+        this->_display->toggle_settings();
+            //
+            // switch to settings view
+            // this will also set current screen appropriately.
+            //
+        if(this->_display->get_current_screen() == SCREENS::SETTINGS)
+        {
+            if(this->_motion->get_state() != MOTION_STATE::LOCKED) this->_motion->lock();
+        }       
+        else
+        {
+            this->_motion->unlock();
+            this->manage_coolant(EXT_GPIO_LUBE_AUTO, "");       // force re-evaluation of coolant state
+            this->manage_air(EXT_GPIO_AIR_AUTO, "");            // force re-evaluation of air state
+            this->manage_lights(EXT_GPIO_LIGHT_COLD, "");       // force re-evaluation of light state
+            this->_display->resume_tasks();
+            this->_inputs->resume_monitoring();
+            this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
+            this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+        }
     }
 }
 
@@ -271,24 +337,43 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
-        if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
-        { 
-            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-            this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
-        }
-        else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
-    }
-    else 
-    {
-        this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);    
-        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+        
+        // we first set the display state to show blade running. Then we delay for a little to give the spi
+        // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+        // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+        // we then delay another little it and check to make sure the blade is running. If it is not, we reset the 
+        // display. 
+        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+        this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        if(this->_motion->activate_blade() != BLADE_STATE::RUNNING)
         {
+            vTaskDelay(pdMS_TO_TICKS(250)); 
             this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
             this->_display->actions_overlay(false);
         }
-        else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+        else vTaskDelay(pdMS_TO_TICKS(250));
     }
+    else 
+    {
+        this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
 
+        // we first switch off the blade motor, then add a short delay to give the spi
+        // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+        // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+        // then we proceed with updating the display
+        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+        {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
+            this->_display->actions_overlay(false);
+        }
+        else
+        {
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+            this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
+        }
+    }
 }
 
 /**
@@ -328,11 +413,24 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON); 
         if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
         {
-            if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
+            // we first set the display state to show blade running. Then we delay for a little to give the spi
+            // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+            // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+            // we then delay another little it and check to make sure the blade is running. If it is not, we reset the 
+            // display. 
+            this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
+            vTaskDelay(pdMS_TO_TICKS(250));
+            if(this->_motion->activate_blade() != BLADE_STATE::RUNNING)
             { 
-                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
+                vTaskDelay(pdMS_TO_TICKS(250));
+                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+                this->_display->add_alert(F("Unable to start the blade. Cannot proceed feeding."));
+                this->_display->set_button(gpio, TOUCH_TAB_STATE::OFF);
+                this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
+                this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+                return;
             }
-            else this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+            vTaskDelay(pdMS_TO_TICKS(250));
         }
 
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
@@ -367,7 +465,20 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         // machine is feeding, we need to stop feeding and switch off the blade if necessary.
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
-        this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->deactivate_blade() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
+        if(this->_motion->get_blade_status() != BLADE_STATE::STOPPED)
+        {
+            // we first switch off the blade motor, then add a short delay to give the spi
+            // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+            // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+            // then we proceed with updating the display
+            if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+            {   
+                vTaskDelay(pdMS_TO_TICKS(250));
+                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+            }
+            else this->_display->add_alert("Unable to stop blade!");
+        }
+        this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->get_blade_status() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
         this->_display->set_workarea_title(nullptr, 0, "");
         this->_display->cutting_complete(false);
         this->_motion->feed(nullptr);

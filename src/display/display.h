@@ -131,6 +131,11 @@ extern const uint16_t stall_margin[] PROGMEM;
 extern const uint16_t margin_stall_risk[] PROGMEM;
 extern const uint16_t margin_stall[] PROGMEM;
 extern const uint16_t margin_safe[] PROGMEM;
+extern const uint16_t settings_title[] PROGMEM;
+extern const uint16_t settings_controls[] PROGMEM;
+extern const uint16_t settings_general[] PROGMEM;
+extern const uint16_t settings_jobs[] PROGMEM;
+extern const uint16_t settings_timeouts[] PROGMEM;
 
 extern const size_t homing_title_size;
 extern const size_t homing_size;
@@ -139,11 +144,39 @@ extern const size_t cutting_title_size;
 extern const size_t blade_on_size; 
 extern const size_t cutting_size;
 extern const size_t alerts_title_size;
+extern const size_t settings_title_size;
 
 static constexpr uint16_t status_width = 401;
 static constexpr uint16_t status_height = 21;
 #pragma endregion
 
+#pragma region various constants
+static constexpr uint8_t HOMING_W = 255;
+static constexpr uint8_t HOMING_H = 170;
+static constexpr uint8_t CUTTING_W = 255;
+static constexpr uint8_t CUTTING_H = 75;
+static constexpr uint8_t CUTTING_GRID = 15;
+static constexpr uint8_t CUTTING_CHART_MARGIN = CUTTING_GRID;
+static constexpr uint8_t CUTTING_CHART_OFFSET = 0;
+
+static constexpr uint8_t CHART_MARGIN = 0;
+static constexpr uint8_t CHART_OFFSET = 17;
+static constexpr uint8_t CHART_GRID = 17;
+static constexpr int POLAR_PLOT_OFFSET = 90;
+
+static constexpr uint16_t BORG_GREEN   = 0x3666;
+static constexpr uint16_t LCARS_POLAR  = 0x4228;
+static constexpr uint16_t LCARS_GRID   = 0x2945;
+static constexpr uint16_t LCARS_BLUE   = 0x0418;
+static constexpr uint16_t LCARS_CYAN   = 0x75FF;
+static constexpr uint16_t LCARS_ORANGE = 0xFD20;
+static constexpr uint16_t LCARS_GRAY   = 0x1082;
+#pragma endregion
+
+/**
+ * @brief Defines the main screens
+ * 
+ */
 typedef enum SCREENS 
 {
   MAIN = 0,
@@ -151,6 +184,34 @@ typedef enum SCREENS
   SETTINGS = 2, 
   EMS = 3
 } screens_t;
+
+/**
+ * @brief Defines the Settings screen subscreens
+ * 
+ */
+typedef enum SETTING_SCREENS 
+{
+  INVALID = 0,
+  GENERAL = 1,
+  JOBS = 2,
+  TIMEOUTS = 3
+} setting_screens_t;
+
+/**
+ * @brief Define the attributes of a settings subscreen
+ * 
+ */
+typedef struct 
+{
+  const uint8_t id;
+  const setting_screens_t section;
+  const char* name; 
+  const uint16_t* icon; 
+  const uint8_t icon_row;
+  const uint8_t icon_column;
+  std::function<void(uint8_t gpio, const char*)> entry;
+  std::function<void(uint8_t gpio, const char*)> exit;
+} setting_screen_t;
 
 /**
  * @brief Structure to define the area and behavior of a touch function. 
@@ -191,26 +252,7 @@ typedef enum STATUS_OP {
   CLEAR
 } status_op_t;
 
-static constexpr uint8_t HOMING_W = 255;
-static constexpr uint8_t HOMING_H = 170;
-static constexpr uint8_t CUTTING_W = 255;
-static constexpr uint8_t CUTTING_H = 75;
-static constexpr uint8_t CUTTING_GRID = 15;
-static constexpr uint8_t CUTTING_CHART_MARGIN = CUTTING_GRID;
-static constexpr uint8_t CUTTING_CHART_OFFSET = 0;
 
-static constexpr uint8_t CHART_MARGIN = 0;
-static constexpr uint8_t CHART_OFFSET = 17;
-static constexpr uint8_t CHART_GRID = 17;
-static constexpr int POLAR_PLOT_OFFSET = 90;
-
-static constexpr uint16_t BORG_GREEN   = 0x3666;
-static constexpr uint16_t LCARS_POLAR  = 0x4228;
-static constexpr uint16_t LCARS_GRID   = 0x2945;
-static constexpr uint16_t LCARS_BLUE   = 0x0418;
-static constexpr uint16_t LCARS_CYAN   = 0x75FF;
-static constexpr uint16_t LCARS_ORANGE = 0xFD20;
-static constexpr uint16_t LCARS_GRAY   = 0x1082;
 
 
 /**
@@ -276,12 +318,6 @@ public:
      * 
      */
     void hide_toast();
-
-    /**
-     * @brief Draws the taskbar.
-     * 
-     */
-    void draw_status_bar();
 
     /**
      * @brief Sets or clears the flags of the status value.
@@ -465,6 +501,12 @@ public:
     void page_alerts(bool forward);
 
     /**
+     * @brief Toggles the settings screen on an off.
+     * @param force_on - true to force the settings display on. Defaults to false. 
+     */
+    void toggle_settings(bool force_on=false);
+
+    /**
      * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
      * @param direction - the direction of the wheel movement.
      * @param steps - the number of steps moved.
@@ -476,6 +518,53 @@ public:
      * 
      */
     void log_stack_usage();
+
+    /**
+     * @brief Get the settings screens object containing information about the settings screens
+     * 
+     * @return std::array<settings_screen_t, 6>& 
+     */
+    std::array<setting_screen_t, 6>& get_settings_screens();
+
+
+    /**
+     * @brief Gets the current settings screen.
+     * 
+     * @return const setting_screens_t& 
+     */
+    const setting_screens_t& get_current_settings_screen();
+
+    /**
+     * @brief Get the current screen object
+     * 
+     * @return const screen_t& 
+     */
+    const screens_t& get_current_screen() { return this->_screen; } 
+
+    /**
+     * @brief Save the settings to NVMS
+     * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+     * @param command - Command name passed in from the input watcher
+     * 
+     * @remarks - the function signature is a delegate for the input watcher
+     */
+    void save_settings(uint8_t gpio, const char*);
+
+    /**
+     * @brief Apply the defaults to the settings
+     * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+     * @param command - Command name passed in from the input watcher
+     * 
+     * @remarks - the function signature is a delegate for the input watcher
+     */
+    void default_settings(uint8_t gpio, const char*);
+
+    /**
+     * @brief Prints the screen or a sprite to the console.
+     * 
+     * @param sprite - The sprite to print. To print entire screen, supply a nullptr.
+     */
+    void print_screen(LGFX_Sprite *sprite);
 
   protected:
 
@@ -523,9 +612,7 @@ public:
      */
     static void alerts_badge_runner(void *args);
 
-    lgfx::Panel_ST7796 _panel;
-    lgfx::Bus_SPI _bus;
-    lgfx::Touch_XPT2046 _touch;
+
 
   private:
 
@@ -797,6 +884,19 @@ public:
 
 
     #pragma endregion
+
+    #pragma region settings methods
+    /** 
+     * @brief Draws the main canvas of the settings screen
+     */
+    void draw_settings_canvas();
+
+    void draw_settings_detail(uint8_t gpio, const char*);
+    #pragma endregion
+
+    lgfx::Panel_ST7796 _panel;
+    lgfx::Bus_SPI _bus;
+    lgfx::Touch_XPT2046 _touch;
 
     std::atomic<bool> _paused {false};
     std::atomic<bool> _homing_animation_stop_requested {false};
