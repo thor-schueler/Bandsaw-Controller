@@ -100,6 +100,7 @@ void Controller::begin()
         this->_display->show_toast(F("Blade stopped due to safety criteria"));  
         if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
         {
+            vTaskDelay(pdMS_TO_TICKS(250));
             this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
             this->_display->actions_overlay(false);
         }
@@ -336,24 +337,43 @@ void Controller::toggle_saw_blade(uint8_t gpio, const char* command)
     if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON); 
-        if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
-        { 
-            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-            this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
-        }
-        else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
-    }
-    else 
-    {
-        this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);    
-        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+        
+        // we first set the display state to show blade running. Then we delay for a little to give the spi
+        // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+        // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+        // we then delay another little it and check to make sure the blade is running. If it is not, we reset the 
+        // display. 
+        this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+        this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        if(this->_motion->activate_blade() != BLADE_STATE::RUNNING)
         {
+            vTaskDelay(pdMS_TO_TICKS(250)); 
             this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
             this->_display->actions_overlay(false);
         }
-        else this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+        else vTaskDelay(pdMS_TO_TICKS(250));
     }
+    else 
+    {
+        this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
 
+        // we first switch off the blade motor, then add a short delay to give the spi
+        // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+        // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+        // then we proceed with updating the display
+        if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+        {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF);
+            this->_display->actions_overlay(false);
+        }
+        else
+        {
+            this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
+            this->_display->actions_overlay(true, blade_on, blade_on_size, "", action_green);
+        }
+    }
 }
 
 /**
@@ -393,11 +413,24 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON); 
         if(this->_motion->get_blade_status() == BLADE_STATE::STOPPED)
         {
-            if(this->_motion->activate_blade() == BLADE_STATE::RUNNING)
+            // we first set the display state to show blade running. Then we delay for a little to give the spi
+            // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+            // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+            // we then delay another little it and check to make sure the blade is running. If it is not, we reset the 
+            // display. 
+            this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
+            vTaskDelay(pdMS_TO_TICKS(250));
+            if(this->_motion->activate_blade() != BLADE_STATE::RUNNING)
             { 
-                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::ON);
+                vTaskDelay(pdMS_TO_TICKS(250));
+                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+                this->_display->add_alert(F("Unable to start the blade. Cannot proceed feeding."));
+                this->_display->set_button(gpio, TOUCH_TAB_STATE::OFF);
+                this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
+                this->_display->start_feed_animation([this](){ return this->_motion->feed_rate_ipm(); });
+                return;
             }
-            else this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+            vTaskDelay(pdMS_TO_TICKS(250));
         }
 
         this->_display->feeds_and_speeds_overlay(true, this->_motion->feed_rate_ipm(), true, [this](){ return this->_motion->feed_rate_ipm(); });
@@ -432,7 +465,20 @@ void Controller::toggle_feed(uint8_t gpio, const char* command)
         // machine is feeding, we need to stop feeding and switch off the blade if necessary.
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::OFF); 
-        this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->deactivate_blade() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
+        if(this->_motion->get_blade_status() != BLADE_STATE::STOPPED)
+        {
+            // we first switch off the blade motor, then add a short delay to give the spi
+            // transaction an opportunity to complete before we toggle the blade. That is to prevent the EMI
+            // pulse of the blade activating to interfere with SPI transaction and corrupting the screen.
+            // then we proceed with updating the display
+            if(this->_motion->deactivate_blade() == BLADE_STATE::STOPPED)
+            {   
+                vTaskDelay(pdMS_TO_TICKS(250));
+                this->_display->set_button_tab(EXT_GPIO_START_PIN, TOUCH_TAB_STATE::OFF);
+            }
+            else this->_display->add_alert("Unable to stop blade!");
+        }
+        this->_display->set_button_tab(EXT_GPIO_START_PIN, this->_motion->get_blade_status() == BLADE_STATE::STOPPED ? TOUCH_TAB_STATE::OFF : TOUCH_TAB_STATE::ON);
         this->_display->set_workarea_title(nullptr, 0, "");
         this->_display->cutting_complete(false);
         this->_motion->feed(nullptr);
