@@ -823,7 +823,7 @@ void Motion::cutting_runner(void * args)
         }
         else
         {
-             Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
+            Logger.Info(F("...   Cutting completed successfully, feed endstop reached."));
             _args->callback(false);
             _this->_state = MOTION_STATE::FEEDING;
             // retain feeding state to retain the display annimation and force the user to 
