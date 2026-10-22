@@ -6,6 +6,7 @@
 
 #include "Arduino.h"
 #include <LovyanGFX.hpp>
+#include "src/config/config.h"
 #include "src/logging/SerialLogger.h"
 #include <atomic>
 #include <functional>
@@ -209,6 +210,9 @@ typedef struct
   const uint16_t* icon; 
   const uint8_t icon_row;
   const uint8_t icon_column;
+  const settings_t& settings;
+  const field_info_t* fields;
+  const size_t fields_size;
   std::function<void(uint8_t gpio, const char*)> entry;
   std::function<void(uint8_t gpio, const char*)> exit;
 } setting_screen_t;
@@ -543,21 +547,21 @@ public:
 
     /**
      * @brief Save the settings to NVMS
-     * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+     * @param id - Command ID.
      * @param command - Command name passed in from the input watcher
      * 
      * @remarks - the function signature is a delegate for the input watcher
      */
-    void save_settings(uint8_t gpio, const char*);
+    void save_settings(uint8_t id, const char*);
 
     /**
      * @brief Apply the defaults to the settings
-     * @param gpio - GPIO for the light indicator (either warm or cold, depending on the invocation).
+     * @param id - Command ID.
      * @param command - Command name passed in from the input watcher
      * 
      * @remarks - the function signature is a delegate for the input watcher
      */
-    void default_settings(uint8_t gpio, const char*);
+    void default_settings(uint8_t id, const char*);
 
     /**
      * @brief Prints the screen or a sprite to the console.
@@ -891,7 +895,30 @@ public:
      */
     void draw_settings_canvas();
 
-    void draw_settings_detail(uint8_t gpio, const char*);
+    /**
+     * @brief Draws teh detail screen for a particular setting section
+     * @param id - ID of the settings screen
+     * @param command - Command name passed in from the input watcher
+     * 
+     * @remarks - the function signature is a delegate for the input watcher
+     */
+    void draw_settings_detail(uint8_t id, const char*);
+
+    /**
+     * @brief Process touch input for settings detail screens
+     * @param x - touch x coordinate
+     * @param y - touch y coordinate
+     */
+    void process_settings_screen_touch(uint16_t x, uint16_t y);
+
+    /**
+     * @brief Draws the settings controls for a certain settings section
+     * @param value - settings enumeration. Must derive from settings_t
+     * @param fields - the fields enumeration for the settings enumeration
+     * @param fields_size - the number of fields in the enumeration
+     */
+    template<typename T>
+    void draw_settings(const T& value, const field_info_t* fields, size_t fields_size );
     #pragma endregion
 
     lgfx::Panel_ST7796 _panel;

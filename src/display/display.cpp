@@ -39,10 +39,10 @@ touch_area_t settings_touch_areas[] = {
   { 359, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
   { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 2, true },
   { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true }, 
+  { 88, 95, 343, 265, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 99, true }, 
   { 105, 105, 165, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }, 
   { 190, 105, 250, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 4, true }, 
-  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true } 
-
+  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true }
 };
 
 touch_area_t ems_touch_areas[] = {
@@ -504,6 +504,18 @@ void Display::touch_runner(void* args)
                         uint8_t gpio = touch_areas[_this->_screen].areas[i].gpio;
                         if(gpio < in.max_phys_inputs && gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
                         if(gpio < in.max_inputs && gpio != UINT8_MAX && in.inputs[gpio].entry != nullptr) in.inputs[gpio].entry(gpio, in.inputs[gpio].command.c_str());
+                        
+                        // special case handling for complex subscreen that do touch processing themselves
+                        if(gpio == 99)
+                        {
+                            if(_this->get_current_settings_screen() != SETTING_SCREENS::INVALID) _this->process_settings_screen_touch(x, y);
+                            else
+                            {
+                                continue;
+                                    // ensure that processing continues unless we have handed off to subprocessor
+                            }
+                        }
+
                         if(_this->_screen != old_screen) 
                         { 
                             old_screen = _this->_screen;
