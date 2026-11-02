@@ -3,6 +3,8 @@
 
 #include "version.h"
 #include "display.h"
+#include "control.h"
+#include "checkbox/checkbox.h"
 #include "src/inputs/inputs.h"
 #include "src/config/config.h"
 #include "dialog/dialog.h"
@@ -11,7 +13,7 @@
 #include <stdarg.h>
 #include <FunctionalInterrupt.h>
 
-
+std::array<IBase*, 10> __controls {};
 std::array<setting_screen_t, 6> __screens = {{    
     { 3, SETTING_SCREENS::GENERAL, "General", settings_general, 0, 0, Config::General(), general_fields, std::size(general_fields), nullptr, nullptr},
     { 4, SETTING_SCREENS::JOBS, "Jobs", settings_jobs, 0, 1, Config::Jobs(), jobs_fields, std::size(jobs_fields), nullptr, nullptr},
@@ -22,6 +24,21 @@ std::array<setting_screen_t, 6> __screens = {{
 }};
 setting_screens_t __current_screen = SETTING_SCREENS::INVALID;
 bool __needs_saving = false;
+
+String prettify(String s)
+{
+    bool capitalize = true;
+    for (char& c : s)
+    {
+        if (c == '_') { c = ' '; capitalize = true; }
+        else if (capitalize)
+        {
+            c = std::toupper(static_cast<unsigned char>(c));
+            capitalize = false;
+        }
+    }
+    return s;
+}
 
 /**
  * @brief Toggles the settings screen on an off.
@@ -91,6 +108,10 @@ void Display::draw_settings_canvas()
     section.setColorDepth(16);
     section.createSprite(59,59);
 
+    // ensure previous controls are deleted if necessary
+    for(uint8_t i=0; i<__controls.size(); i++) if(__controls[i] != nullptr) { delete __controls[i]; __controls[i] = nullptr; } 
+
+
     for (const auto& s : __screens) 
     {
         if(s.section == SETTING_SCREENS::INVALID) continue;
@@ -120,15 +141,16 @@ void Display::draw_settings_detail(uint8_t id, const char*)
     for(auto &s : __screens) if(s.id == id) { ps = &s; break; }
     __current_screen = ps->section;
 
-    LGFX_Sprite section(this);
-    section.setColorDepth(16);
-    section.createSprite(HOMING_W, HOMING_H);
-    section.fillSprite(TFT_BLACK);
-    if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
-    { 
-        section.pushSprite(88, 95);
-        xSemaphoreGive(this->_display_mutex);
-    }    
+    //LGFX_Sprite section(this);
+    //section.setColorDepth(16);
+    //section.createSprite(HOMING_W, HOMING_H);
+    //section.fillSprite(TFT_BLACK);
+    //if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    //{ 
+    //    section.pushSprite(88, 95);
+    //    xSemaphoreGive(this->_display_mutex);
+    //}    
+    //section.deleteSprite();
 
     // draw the controls for the various sections here...
     settings_t settings = ps->settings;
@@ -136,7 +158,6 @@ void Display::draw_settings_detail(uint8_t id, const char*)
     const size_t size = ps->fields_size; 
     this->draw_settings(settings, fields, size);
 
-    section.deleteSprite();
     this->set_workarea_title(settings_title, settings_title_size, " - " + String(ps->name));
 }
 
@@ -150,13 +171,23 @@ template<typename T>
 void Display::draw_settings(const T& value, const field_info_t* fields, size_t fields_size)
 {
     static_assert(std::is_base_of_v<settings_t, T>, "T must derive from settings_t"); 
-    for (size_t i = 0; i < fields_size; ++i)
+
+    LGFX_Sprite s(this);
+    s.setColorDepth(16);
+    s.createSprite(HOMING_W, HOMING_H);
+    s.fillSprite(TFT_BLACK);
+    uint16_t y = 0;
+
+    for (size_t i=0; i < fields_size; ++i)
     {
         const field_info_t& field = fields[i];
         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&value) + field.offset;
         switch(field.type)
         {
             case field_type_t::bool_t:
+                if(__controls[i] == nullptr) __controls[i] = new Checkbox(prettify(field.name));
+                __controls[i]->copy_from(ptr);
+                y += __controls[i]->show(s, 0, y, HOMING_W);
                 Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
                 break;
             case field_type_t::uint8_t:
@@ -175,6 +206,13 @@ void Display::draw_settings(const T& value, const field_info_t* fields, size_t f
                 Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
         }
     }
+
+    if(xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+    { 
+        s.pushSprite(88, 95);
+        xSemaphoreGive(this->_display_mutex);
+    }    
+    s.deleteSprite();
 }
 
 /**
@@ -223,5 +261,6 @@ void Display::default_settings(uint8_t gpio, const char*)
  */
 void Display::process_settings_screen_touch(uint16_t x, uint16_t y)
 {
-
+    // here we need to iterate though all of the created controls and figure out 
+    // which control to dispatch the touch to. 
 }
