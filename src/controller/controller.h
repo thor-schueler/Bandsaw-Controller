@@ -158,7 +158,6 @@ class Controller
         Inputs* _inputs = nullptr;
         Motion* _motion = nullptr;
         String _touch_command;
-        bool _enable_backlight = true;
 
 };
 

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "version.h"
-#include "display.h"
 #include "src/inputs/inputs.h"
-#include "dialog/dialog.h"
+#include "src/display/display.h"
+#include "src/display/dialog/dialog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>

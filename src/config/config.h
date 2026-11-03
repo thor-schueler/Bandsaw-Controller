@@ -21,6 +21,7 @@ typedef struct FIELD_INFO
 {
     const char* name;
     size_t offset;
+    size_t size;
     field_type_t type;
     const char* format_string;
     
@@ -98,7 +99,7 @@ typedef struct JOB_SETTINGS : SETTINGS
 
 #undef DECLARE
 
-#define FIELD(settings_type, member_type, name, value) {#name, offsetof(settings_type, name), FIELD_##member_type, FIELD_##member_type##_FORMAT},
+#define FIELD(settings_type, member_type, name, value) {#name, offsetof(settings_type, name), sizeof(member_type), FIELD_##member_type, FIELD_##member_type##_FORMAT},
 inline field_info_t general_fields[] =
 {
     GENERAL_FIELDS(FIELD)
@@ -149,6 +150,13 @@ class Config
          */
         static void print();
 
+        /**
+         * @brief Initializes the config from nvm.
+         * 
+         */
+        static void initialize() { if(_instance == nullptr) _instance = new Config(); if(!_instance->_loaded) { _instance->load(); _instance->_loaded=true; }}
+
+
     protected:
 
         /**
@@ -174,13 +182,12 @@ class Config
 
     private:
 
-
-
         inline static Config* _instance = nullptr;
 
         general_settings_t general;
         job_settings_t jobs;
         timeout_settings_t timeouts;
+        bool _loaded = false;
 
 };
 

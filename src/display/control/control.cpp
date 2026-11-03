@@ -1,7 +1,8 @@
 // Copyright (c) Thor Schueler. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-#include "control.h"
+#include "src/display/display.h"
+#include "src/display/control/control.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -22,11 +23,15 @@ uint8_t IBase::draw_wrapped_text(LGFX_Sprite& sprite, const char* text, int x, i
 {
     String t(text);
     String line;
+
+    sprite.setTextColor(BORG_GREEN);
+    sprite.setFont(&fonts::FreeSans9pt7b);
+    sprite.setTextSize(1);
+
     int lineHeight = sprite.fontHeight();
     int currentY = y;
     int start = 0;
 
-    sprite.setTextColor(BORG_GREEN);
     while (start < t.length())
     {
         int end = t.indexOf(' ', start);

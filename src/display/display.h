@@ -8,6 +8,8 @@
 #include <LovyanGFX.hpp>
 #include "src/config/config.h"
 #include "src/logging/SerialLogger.h"
+#include "src/display/control/control.h"
+#include <variant>
 #include <atomic>
 #include <functional>
 
@@ -62,7 +64,7 @@
 #define ALERTS_PAGE_SIZE 6
 #define ALERTS_DETAIL_H 100
 #define TOASTTIMEOUT 3'000'000
-
+#define STATUSTIMEOUT 3'000'000
 #define STATUS_GLYPH_H 20
 #define STATUS_GLYPH_SPACE 10
 #define STATUS_W 320
@@ -198,6 +200,9 @@ typedef enum SETTING_SCREENS
   TIMEOUTS = 3
 } setting_screens_t;
 
+
+using settings_variant_t = std::variant<settings_t, general_settings_t, timeout_settings_t, job_settings_t>;
+
 /**
  * @brief Define the attributes of a settings subscreen
  * 
@@ -210,7 +215,8 @@ typedef struct
   const uint16_t* icon; 
   const uint8_t icon_row;
   const uint8_t icon_column;
-  const settings_t& settings;
+  settings_t& settings;
+  settings_variant_t new_settings;
   const field_info_t* fields;
   const size_t fields_size;
   std::function<void(uint8_t gpio, const char*)> entry;
@@ -480,7 +486,7 @@ public:
      * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
      * it ensures the task owns the shutdown path and the handle is cleared only after exit.
      */
-    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 2000);
+    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms=0);
 
 
     /**
@@ -917,8 +923,15 @@ public:
      * @param fields - the fields enumeration for the settings enumeration
      * @param fields_size - the number of fields in the enumeration
      */
-    template<typename T>
-    void draw_settings(const T& value, const field_info_t* fields, size_t fields_size );
+    void draw_settings(const settings_t& value, const field_info_t* fields, size_t fields_size );
+
+    /**
+     * @brief Callback called when a control changes its value. Initiates saving to settings
+     * and redrawing the control
+     * 
+     * @param src - The control raising the event.
+     */
+    void on_control_change(IBase* src);
     #pragma endregion
 
     lgfx::Panel_ST7796 _panel;
@@ -940,6 +953,7 @@ public:
     volatile bool _use_manual_feed_smoothing = false;
 
     volatile uint16_t _status = 0x0000;
+    volatile uint8_t _settings_status = 0x00;
     volatile SemaphoreHandle_t _display_mutex;
     TaskHandle_t _touchRunner = NULL;
     TaskHandle_t _homing_animation = NULL;
@@ -950,6 +964,7 @@ public:
     TaskHandle_t _alertBadgeRunner = NULL;
     TaskHandle_t _statusRunner = NULL;
     esp_timer_handle_t toast_timer = NULL;
+    esp_timer_handle_t status_timer = NULL;
     screens_t _screen = SCREENS::MAIN;
 };
 

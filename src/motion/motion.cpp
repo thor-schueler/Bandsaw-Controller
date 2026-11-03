@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "motion.h"
+#include "src/config/config.h"
 
 ledc_channel_config_t _channel_config = {
     .gpio_num   = STEP_PIN,
@@ -28,12 +29,12 @@ Motion::Motion()
  */
 Motion::~Motion()
 {
-    this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
-    this->request_task_stop(this->_blade_safety_task, this->_blade_safety_monitor_stop_requested, "bladeSafetyMonitor", 2000);        
-    this->request_task_stop(this->_manual_speed_task, this->_speed_monitor_stop_requested, "manualSpeedMonitor", 2000);
-    this->request_task_stop(this->_manual_feed_task, this->_manual_feed_runner_stop_requested, "manualFeedRunner", 2000);
-    this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner", 2000);
-    this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner", 2000);
+    this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor");
+    this->request_task_stop(this->_blade_safety_task, this->_blade_safety_monitor_stop_requested, "bladeSafetyMonitor");        
+    this->request_task_stop(this->_manual_speed_task, this->_speed_monitor_stop_requested, "manualSpeedMonitor");
+    this->request_task_stop(this->_manual_feed_task, this->_manual_feed_runner_stop_requested, "manualFeedRunner");
+    this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner");
+    this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner");
               
     delete this->_tmc_driver;
     this->_tmc_serial->end();
@@ -153,6 +154,7 @@ void Motion::begin()
 void Motion::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
 {
     if(task_handle == NULL) return;
+    if(timeout_ms == 0) timeout_ms = Config::Timeouts().task_shutdown_timeout;
 
     stop_flag.store(true, std::memory_order_release);
     xTaskNotifyGive(task_handle);           // important to unblock a blocked task. Note that the task logic
@@ -414,7 +416,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
 
         if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
         {
-            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor");
         }
         if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x08);
         this->_air_state = AIR_STATE::OFF;
@@ -423,7 +425,7 @@ air_state_t Motion::manage_air(uint8_t gpio_on, uint8_t gpio_auto, std::function
     {
         if(this->_blade_task != NULL && this->_coolant_state != COOLANT_STATE::AUTO)
         {
-            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor");
         }
 
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
@@ -471,7 +473,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
 
         if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
         {
-            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor");
         }
         if(this->_status_flag_callback != nullptr) this->_status_flag_callback(1, 0x04);        
         this->_coolant_state = COOLANT_STATE::OFF;
@@ -480,7 +482,7 @@ coolant_state_t Motion::manage_coolant(uint8_t gpio_on, uint8_t gpio_auto, std::
     {
         if(this->_blade_task != NULL && this->_air_state != AIR_STATE::AUTO)
         {
-            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor", 2000);
+            this->request_task_stop(this->_blade_task, this->_blade_monitor_stop_requested, "bladeMonitor");
         }
 
         if(this->_ems_state == EMS_STATE::SHUTDOWN)
@@ -560,7 +562,7 @@ void Motion::home(std::function<void(bool)> complete)
 {
     if(this->_homing_task != NULL || complete == nullptr)
     {
-        this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner", 2000);
+        this->request_task_stop(this->_homing_task, this->_homing_runner_stop_requested, "homingRunner");
         if(_state == MOTION_STATE::HOMING) _state = MOTION_STATE::IDLE;
     }
     else
@@ -580,7 +582,7 @@ void Motion::feed(std::function<void(bool)> complete)
 {
     if(this->_cutting_task != NULL || complete == nullptr)
     {
-        this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner", 2000);
+        this->request_task_stop(this->_cutting_task, this->_cutting_runner_stop_requested, "cuttingRunner");
         if(_state == MOTION_STATE::FEEDING) _state = MOTION_STATE::IDLE;
     }
     else
@@ -863,6 +865,7 @@ void Motion::manual_feed_runner(void* args)
         uint64_t now_us = esp_timer_get_time();
         float dt = static_cast<float>(now_us - last_us) / 1000000.0f;
         last_us = now_us;
+        _this->_should_use_task_for_manual_speed = Config::Jobs().use_task_for_manual_feeding;
 
         if(balance != _this->_step_balance.load() || !running || abs(balance) < STEP_DECAY_FLOOR)
         {
@@ -938,7 +941,7 @@ void Motion::manual_feed_runner(void* args)
                 digitalWrite(EN_PIN, HIGH);
                 if(_this->_should_use_task_for_manual_speed && _this->_manual_speed_task != NULL)
                 {
-                    _this->request_task_stop(_this->_manual_speed_task, _this->_speed_monitor_stop_requested, "manualSpeedMonitor", 2000);
+                    _this->request_task_stop(_this->_manual_speed_task, _this->_speed_monitor_stop_requested, "manualSpeedMonitor");
                 }
                 _this->_step_balance.store(0);
                 balance = 0;

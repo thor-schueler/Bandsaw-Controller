@@ -145,7 +145,7 @@ class Inputs {
      * exited. This prevents stale task handles and race-prone polling on a handle that may
      * be invalid while the task is still running.
      */
-    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 2000);
+    void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 0);
 
     /**
      * @brief Reads a specific GPIO on the PCF8575 extender.

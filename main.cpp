@@ -50,7 +50,6 @@ Controller* controller = nullptr;
  */
 void setup()
 {
-  vTaskDelay(2000);
   // Enable PSRAM if available. This will allow us to use the PSRAM for dynamic memory allocation, 
   // which is crucial for the display and other memory intensive operations.
   // esp_log_level_set("*", ESP_LOG_NONE);
@@ -69,10 +68,8 @@ void setup()
   Logger.Info_f(F("Total PSRAM: %d"), ESP.getPsramSize()); 
   Logger.Info_f(F("Free PSRAM: %d"), ESP.getFreePsram());
   Logger.Info(F("... Startup"));
+  Config::initialize();
   Config::print();
-  //Logger.Info_f("%u", Config::Jobs().use_task_for_manual_feeding);
-  //Config::Jobs().use_task_for_manual_feeding = true;
-  Config::save();
   
   controller = new Controller();
   controller->begin();
@@ -91,6 +88,7 @@ void loop()
 {
   vTaskDelay(10000);
   heap_caps_check_integrity_all(true);
+  Logger.Info_f(F("Free heap: %d"), ESP.getFreeHeap());
   Logger.Info_f(F("Main: High Water Mark:                         %u"), uxTaskGetStackHighWaterMark(NULL));
   if(controller != nullptr) controller->log_stack_usage();
   vTaskDelay(50000);

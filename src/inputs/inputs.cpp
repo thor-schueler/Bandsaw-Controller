@@ -3,6 +3,7 @@
 
 #include "inputs.h"
 #include "src/logging/SerialLogger.h"
+#include "src/config/config.h"
 
 uint8_t __instances = 0;
 
@@ -76,14 +77,14 @@ Inputs::~Inputs()
     if(this->_wheelRunner != NULL)
     {
         this->_wheelRunner_stop_requested.store(true, std::memory_order_release);
-        this->request_task_stop(this->_wheelRunner, this->_wheelRunner_stop_requested, "wheelRunner", 2000);
+        this->request_task_stop(this->_wheelRunner, this->_wheelRunner_stop_requested, "wheelRunner");
         this->_wheelRunner = NULL;
     }
 
     if(this->_extendedGPIOWatcher != NULL)
     {
         this->_extended_gpio_watcher_stop_requested.store(true, std::memory_order_release);
-        this->request_task_stop(this->_extendedGPIOWatcher, this->_extended_gpio_watcher_stop_requested, "extendedGPIOWatcher", 2000);
+        this->request_task_stop(this->_extendedGPIOWatcher, this->_extended_gpio_watcher_stop_requested, "extendedGPIOWatcher");
         this->_extendedGPIOWatcher = NULL;
     }
 
@@ -104,6 +105,7 @@ Inputs::~Inputs()
 void Inputs::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
 {
     if(task_handle == NULL) return;
+    if(timeout_ms == 0) timeout_ms = Config::Timeouts().task_shutdown_timeout;
 
     stop_flag.store(true, std::memory_order_release);
     xTaskNotifyGive(task_handle);           // important to unblock a blocked task. Note that the task logic
