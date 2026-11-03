@@ -388,7 +388,7 @@ class Motion
          * This pattern is safer than simply toggling a volatile flag and spinning on the handle because
          * it ensures the task owns the shutdown path and the handle is cleared only after exit.
          */
-        void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms);
+        void request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms = 0);
 
         /**
          * @brief Checks if the blade is allowed to run based on safety criteria

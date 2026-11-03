@@ -39,10 +39,10 @@ touch_area_t settings_touch_areas[] = {
   { 359, 127, 464, 160, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 1, true },
   { 0, 259, 63, 290, 64, 259, 73, 290, settings_icon, 2, true },
   { 359, 161, 464, 193, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 2, true }, 
+  { 88, 95, 343, 265, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 99, true }, 
   { 105, 105, 165, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }, 
   { 190, 105, 250, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 4, true }, 
-  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true } 
-
+  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true }
 };
 
 touch_area_t ems_touch_areas[] = {
@@ -148,6 +148,12 @@ Display::~Display()
         esp_timer_delete(this->toast_timer);
         this->toast_timer = NULL;
     }
+    if(this->status_timer != NULL)
+    {
+        esp_timer_stop(this->status_timer);
+        esp_timer_delete(this->status_timer);
+        this->status_timer = NULL;
+    }
 
     this->request_task_stop(this->_touchRunner, this->_touchRunner_stop_requested, "touchRunner");
     this->request_task_stop(this->_homing_animation, this->_homing_animation_stop_requested, "homingAnnimationRunner");
@@ -174,6 +180,7 @@ Display::~Display()
 void Display::request_task_stop(TaskHandle_t& task_handle, std::atomic<bool>& stop_flag, const char* task_name, uint32_t timeout_ms)
 {
     if(task_handle == NULL) return;
+    if(timeout_ms == 0) timeout_ms = Config::Timeouts().task_shutdown_timeout;
 
     stop_flag.store(true, std::memory_order_release);
     xTaskNotifyGive(task_handle);
@@ -239,17 +246,28 @@ void Display::begin() {
     xTaskCreatePinnedToCore(status_bar_runner, "statusRunner", 4096, this, 1, &_statusRunner, 0);
     
     esp_timer_create_args_t args = {
-            .callback = [](void* arg)
-                {
-                    Display* _this = static_cast<Display*>(arg);
-                    _this->hide_toast();
-                },
-                .arg = this,
-                .dispatch_method = ESP_TIMER_TASK,
-                .name = "toast"
+        .callback = [](void* arg)
+        {
+            Display* _this = static_cast<Display*>(arg);
+            _this->hide_toast();
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "toast"
     };
     esp_timer_create(&args, &toast_timer);
 
+    esp_timer_create_args_t args2 = {
+        .callback = [](void* arg)
+        {
+            Display* _this = static_cast<Display*>(arg);
+            _this->_settings_status = 0x00;
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "settings_status_reset"
+    };
+    esp_timer_create(&args2, &status_timer);
 
     Logger.Info(F("...   Regsiter Touch interrupts"));
     uint8_t ctrl = 0b10010000;
@@ -504,6 +522,18 @@ void Display::touch_runner(void* args)
                         uint8_t gpio = touch_areas[_this->_screen].areas[i].gpio;
                         if(gpio < in.max_phys_inputs && gpio != UINT8_MAX) _this->set_button(gpio, TOUCH_TAB_STATE::ON);
                         if(gpio < in.max_inputs && gpio != UINT8_MAX && in.inputs[gpio].entry != nullptr) in.inputs[gpio].entry(gpio, in.inputs[gpio].command.c_str());
+                        
+                        // special case handling for complex subscreen that do touch processing themselves
+                        if(gpio == 99)
+                        {
+                            if(_this->get_current_settings_screen() != SETTING_SCREENS::INVALID) _this->process_settings_screen_touch(x, y);
+                            else
+                            {
+                                continue;
+                                    // ensure that processing continues unless we have handed off to subprocessor
+                            }
+                        }
+
                         if(_this->_screen != old_screen) 
                         { 
                             old_screen = _this->_screen;

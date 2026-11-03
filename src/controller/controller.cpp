@@ -3,6 +3,7 @@
 // IMPORTANT: LIBRARY MUST BE SPECIFICALLY CONFIGURED FOR EITHER TFT SHIELD
 // OR BREAKOUT BOARD USAGE.
 
+#include "src/config/config.h"
 #include "controller.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -276,13 +277,13 @@ void Controller::manage_lights(uint8_t gpio, const char* command)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);    
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::WAITING);
-        if(this->_enable_backlight) digitalWrite(LIGHT_STRIP_PIN, HIGH);
+        if(Config::General().activate_backlight_with_warm_light) digitalWrite(LIGHT_STRIP_PIN, HIGH);
     }
     else if(is_cold)
     {
         this->_display->set_button(gpio, TOUCH_TAB_STATE::ON);    
         this->_display->set_button_tab(gpio, TOUCH_TAB_STATE::ON);
-        if(this->_enable_backlight) digitalWrite(LIGHT_STRIP_PIN, HIGH);
+        if(Config::General().activate_backlight_with_cold_light) digitalWrite(LIGHT_STRIP_PIN, HIGH);
     }
 }
 

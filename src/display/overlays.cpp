@@ -444,9 +444,9 @@ void Display::status_bar_runner(void *args)
     for(;;)
     {
         vTaskDelay(pdMS_TO_TICKS(50));        
-        if(_this->_paused.load(std::memory_order_acquire)) continue;                // do not draw taskbar when paused
         if(_this->_screen == SCREENS::MAIN)
         {
+            if(_this->_paused.load(std::memory_order_acquire)) continue;            // do not draw taskbar when paused
             if(_this->_has_toasts) continue;                                        // don't draw if a toast is showing
             if(has_static_image && _this->_status & 0xff00 == 0x0000) continue;     // don't draw if static image and no action
 
@@ -475,7 +475,22 @@ void Display::status_bar_runner(void *args)
         }
         else if(_this->_screen == SCREENS::EMS) continue;
         else if(_this->_screen == SCREENS::ALERTS) continue;
-        else if(_this->_screen == SCREENS::SETTINGS) continue;
+        else if(_this->_screen == SCREENS::SETTINGS) 
+        {
+            sb.fillSprite(TFT_BLACK);
+            if(_this->_settings_status & 0x01)
+            {
+                // display config saved status
+                sb.setTextColor(BORG_GREEN, TFT_BLACK);
+                sb.setFont(&fonts::Font2);
+                sb.drawString(F("Settings have been saved"), 0, 0);
+            }
+            if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
+            { 
+                sb.pushSprite(88, 281, TFT_PLUM);
+                xSemaphoreGive(_this->_display_mutex);
+            }
+        }
     }
     sb.deleteSprite();
     _this->_statusRunner = NULL;

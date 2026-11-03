@@ -89,10 +89,7 @@ void print_section(const char* name, const T& s, const FI& f)
 /**
  * Creates a new instance of the config class
  */
-Config::Config()
-{
-    this->load();
-}
+Config::Config() { }
 
 /**
  * @brief Destroy the Config object and clean up associated resources
@@ -139,4 +136,5 @@ void Config::print()
     print_section("General", Config::General(), general_fields);
     print_section("Jobs", Config::Jobs(), jobs_fields);
     print_section("Timeouts", Config::Timeouts(), timeout_fields);
+    if(!Config::_instance->_loaded) Logger.Info("WARNING: configuration has not been loaded!");
 }
