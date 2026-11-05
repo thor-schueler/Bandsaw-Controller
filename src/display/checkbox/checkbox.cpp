@@ -4,7 +4,6 @@
 #include "checkbox.h"
 #include <stdlib.h>
 
-
 /**
  * @brief Renders the control into the viewport
  * @param sprite - the sprite to render into
@@ -17,16 +16,17 @@
 uint8_t Checkbox::show(LGFX_Sprite &sprite, uint16_t top_x, uint16_t top_y, uint16_t width) 
 {
     IBase::show(sprite, top_x, top_y, width);
-    this->volatile_x1 = top_x+2;
-    this->volatile_y1 = top_y+2;
+    this->volatile_x = top_x+2;
+    this->volatile_y = top_y+2;
 
-    sprite.drawRect(volatile_x1, volatile_y1, 20, 20, BORG_GREEN);
-    if(_value) sprite.fillRect(volatile_x1+3, volatile_y1+3, 14, 14, BORG_GREEN);
+    sprite.drawRect(volatile_x, volatile_y, CHKBOX_HEIGHT, CHKBOX_HEIGHT, BORG_GREEN);
+    if(_value) sprite.fillRect(volatile_x + CHK_OFFSET, volatile_y + CHK_OFFSET, CHKBOX_HEIGHT - 2*CHK_OFFSET, CHKBOX_HEIGHT - 2*CHK_OFFSET, BORG_GREEN);
 
-    uint8_t h = this->draw_wrapped_text(sprite, _description.c_str(), volatile_x1+30, volatile_y1+2, sprite.width()-35) + 5;
-    this->_y2 = top_y + (h > 25 ? h : 25);
+    uint8_t h = this->draw_wrapped_text(sprite, _description.c_str(), volatile_x + CHKBOX_HEIGHT + 2*CHK_PADDING, volatile_y+2, sprite.width()-35) + CHK_PADDING;
+    h = (h > (CHKBOX_HEIGHT + CHK_PADDING) ? h : (CHKBOX_HEIGHT + CHK_PADDING)); 
+    this->_y2 = top_y + h;
     this->_has_changes = false;
-    return h > 25 ? h : 25; 
+    return h; 
 }
 
 /**
@@ -37,9 +37,9 @@ uint8_t Checkbox::show(LGFX_Sprite &sprite, uint16_t top_x, uint16_t top_y, uint
  */
 void Checkbox::redraw_volatiles(LGFX_Sprite &sprite) 
 {
-    sprite.fillRect(volatile_x1, volatile_y1, 20, 20, TFT_BLACK);
-    sprite.drawRect(volatile_x1, volatile_y1, 20, 20, BORG_GREEN);
-    if(_value) sprite.fillRect(volatile_x1+3, volatile_y1+3, 14, 14, BORG_GREEN);
+    sprite.fillRect(volatile_x, volatile_y, CHKBOX_HEIGHT, CHKBOX_HEIGHT, TFT_BLACK);
+    sprite.drawRect(volatile_x, volatile_y, CHKBOX_HEIGHT, CHKBOX_HEIGHT, BORG_GREEN);
+    if(_value) sprite.fillRect(volatile_x + CHK_OFFSET, volatile_y + CHK_OFFSET, CHKBOX_HEIGHT - 2*CHK_OFFSET, CHKBOX_HEIGHT - 2*CHK_OFFSET, BORG_GREEN);
     this->_has_changes = false;
 }
 
@@ -56,5 +56,6 @@ void Checkbox::process_touch(uint16_t x, uint16_t y)
 
     this->_value = !this->_value;
     this->_has_changes = true;
+    if(this->on_focus != nullptr) this->on_focus(this, 0x00);
     if(this->on_change != nullptr) this->on_change(this);
 }

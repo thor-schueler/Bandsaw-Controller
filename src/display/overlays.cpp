@@ -478,13 +478,13 @@ void Display::status_bar_runner(void *args)
         else if(_this->_screen == SCREENS::SETTINGS) 
         {
             sb.fillSprite(TFT_BLACK);
-            if(_this->_settings_status & 0x01)
-            {
-                // display config saved status
-                sb.setTextColor(BORG_GREEN, TFT_BLACK);
-                sb.setFont(&fonts::Font2);
-                sb.drawString(F("Settings have been saved"), 0, 0);
-            }
+            sb.setTextColor(BORG_GREEN, TFT_BLACK);
+            sb.setFont(&fonts::Font2);
+
+            // put this processing in ascending order. Lower status values take priority
+            if((_this->_settings_status & 0x0F) == 0x01) sb.drawString(F("Settings have been saved"), 0, 0); // display config saved status
+            else if((_this->_settings_status & 0xF0) == 0x10) sb.drawString(F("Use the wheel to increment/decrement the value"), 0, 0);
+
             if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)
             { 
                 sb.pushSprite(88, 281, TFT_PLUM);

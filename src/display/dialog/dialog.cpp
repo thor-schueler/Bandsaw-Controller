@@ -49,53 +49,58 @@ bool Dialog::show(const char *message)
     uint16_t ty = UINT16_MAX;
     this->_showing.store(true);
     this->_request_exit.store(false);
-    if (xSemaphoreTake(this->_mutex, portMAX_DELAY) == pdTRUE)
-    { 
-        if(this->_sprite.getBuffer() == nullptr) this->_sprite.createSprite(D_WIDTH, SPRITE_H); 
-        
-        //Logger.Info_f("Largest block: %u", heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
-        //Logger.Info_f("Free heap: %u", esp_get_free_heap_size());
-        //Logger.Info_f("Largest block: %u", heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
-        //Logger.Info_f("Free heap: %u", esp_get_free_heap_size());
-        //Logger.Info_f("Sprite buffer: %p", this->_sprite.getBuffer());
-        for(uint8_t i=0; i< (D_HEIGHT/SPRITE_H); i++)
+    
+    if(this->_sprite.getBuffer() == nullptr) this->_sprite.createSprite(D_WIDTH, SPRITE_H);        
+    for(uint8_t i=0; i< (D_HEIGHT/SPRITE_H); i++)
+    {
+        this->_sprite.fillSprite(TFT_BLACK);
+        this->_sprite.pushImage(0, 0, D_WIDTH, SPRITE_H, (lgfx::rgb565_t*)(dialog_sprite + D_WIDTH * SPRITE_H * i));
+        if(i == 1)
         {
-            this->_sprite.fillSprite(TFT_BLACK);
-            this->_sprite.pushImage(0, 0, D_WIDTH, SPRITE_H, (lgfx::rgb565_t*)(dialog_sprite + D_WIDTH * SPRITE_H * i));
-            if(i == 1)
-            {
-                this->_sprite.setTextSize(1);
-                this->_sprite.setTextColor(TFT_WHITE, TFT_BLACK);
-                this->_sprite.setFont(&fonts::FreeSans12pt7b);
-                this->draw_wrapped_text(this->_sprite, message, 50, 0, D_WIDTH - 50 -20);
-            }
-            if((i+1) * SPRITE_H >= D_HEIGHT)
-            {
-                this->_sprite.pushImage(PROCEED_X, PROCEED_Y - i * SPRITE_H, PROCEED_W, PROCEED_H, (lgfx::rgb565_t*)proceed_sprite);
-                this->_sprite.pushImage(CANCEL_X, CANCEL_Y - i * SPRITE_H, CANCEL_W, CANCEL_H, (lgfx::rgb565_t*)cancel_sprite);
-            }
+            this->_sprite.setTextSize(1);
+            this->_sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+            this->_sprite.setFont(&fonts::FreeSans12pt7b);
+            this->draw_wrapped_text(this->_sprite, message, 50, 0, D_WIDTH - 50 -20);
+        }
+        if((i+1) * SPRITE_H >= D_HEIGHT)
+        {
+            this->_sprite.pushImage(PROCEED_X, PROCEED_Y - i * SPRITE_H, PROCEED_W, PROCEED_H, (lgfx::rgb565_t*)proceed_sprite);
+            this->_sprite.pushImage(CANCEL_X, CANCEL_Y - i * SPRITE_H, CANCEL_W, CANCEL_H, (lgfx::rgb565_t*)cancel_sprite);
+        }
+        if (xSemaphoreTake(this->_mutex, portMAX_DELAY) == pdTRUE)
+        { 
             this->_sprite.pushSprite(SHOW_X, SHOW_Y + i* SPRITE_H);
             this->_sprite.waitDMA();
+            xSemaphoreGive(this->_mutex);
         }
-       
-        while(!this->_request_exit.load())
+    }
+
+    bool should_break = false;
+    while(!this->_request_exit.load() && !should_break)
+    {
+        // poll the touch interface here for a proceed/cancel
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (xSemaphoreTake(this->_mutex, portMAX_DELAY) == pdTRUE)
         {
-            // poll the touch interface here for a proceed/cancel
             if(_parent->getTouch(&tx, &ty))
             {
                 if(ty < T_B1_Y || ty > (T_B1_Y + T_B1_H) || tx < T_B1_X || tx > (T_B2_X + T_B2_W) || (tx > (T_B1_X + T_B1_W) && tx < T_B2_W )) continue;
-                else if(tx > T_B1_X && tx < T_B2_X) { status = true; break; }
-                else if(tx > T_B2_X) break;    
+                else if(tx > T_B1_X && tx < T_B2_X) { status = true; should_break = true; }
+                else if(tx > T_B2_X) should_break = true;    
             }
-            vTaskDelay(pdMS_TO_TICKS(50));
+            xSemaphoreGive(this->_mutex);
         }
-        this->_sprite.fillSprite(TFT_BLACK);
-        for(uint8_t i=0; i< (D_HEIGHT/SPRITE_H); i++)
+    }
+
+    this->_sprite.fillSprite(TFT_BLACK);
+    for(uint8_t i=0; i< (D_HEIGHT/SPRITE_H); i++)
+    {
+        if (xSemaphoreTake(this->_mutex, portMAX_DELAY) == pdTRUE)
         {
             this->_sprite.pushSprite(SHOW_X, SHOW_Y + i * SPRITE_H);
             this->_sprite.waitDMA();
+            xSemaphoreGive(this->_mutex);
         }
-        xSemaphoreGive(this->_mutex);
     }
     this->_showing.store(false);
     return status;

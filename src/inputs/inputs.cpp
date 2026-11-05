@@ -196,8 +196,6 @@ void Inputs::pause_monitoring() { this->_pause.store(true, std::memory_order_rel
  */    
 void Inputs::resume_monitoring() { this->_pause.store(false, std::memory_order_release); }
 
-
-
 /**
  * @brief Get the inputs object for a screen
  * @param screen - the screen for which to return the inputs 

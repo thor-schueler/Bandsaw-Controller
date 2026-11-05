@@ -517,11 +517,18 @@ public:
     void toggle_settings(bool force_on=false);
 
     /**
-     * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
+     * @brief Processes wheel movement events for the alerts state.
      * @param direction - the direction of the wheel movement.
      * @param steps - the number of steps moved.
      */
-    void process_wheel_movement(int direction, int steps);
+    void process_alerts_wheel_movement(int direction, int steps);
+
+    /**
+     * @brief Processes wheel movement events for the settings state.
+     * @param direction - the direction of the wheel movement.
+     * @param steps - the number of steps moved.
+     */
+    void process_settings_wheel_movement(int direction, int steps);
 
     /**
      * @brief Logs the usage of the various task stacks to the console
@@ -535,7 +542,6 @@ public:
      * @return std::array<settings_screen_t, 6>& 
      */
     std::array<setting_screen_t, 6>& get_settings_screens();
-
 
     /**
      * @brief Gets the current settings screen.
@@ -932,6 +938,14 @@ public:
      * @param src - The control raising the event.
      */
     void on_control_change(IBase* src);
+
+    /**
+     * @brief Callback called when a control takes the focus
+     * 
+     * @param src - The control raising the event.
+     * @param status - The control status message code used for the status bar. 
+     */
+    void on_focus(IBase* src, uint8_t status);
     #pragma endregion
 
     lgfx::Panel_ST7796 _panel;

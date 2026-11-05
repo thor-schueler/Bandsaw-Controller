@@ -33,7 +33,7 @@ class IBase
          */
         virtual uint8_t show(LGFX_Sprite &sprite, uint16_t top_x, uint16_t top_y, uint16_t width) 
         {
-            this->_x1 - top_x;
+            this->_x1 = top_x;
             this->_y1 = top_y;
             this->_x2 = top_x + width;
             return 0;
@@ -51,6 +51,11 @@ class IBase
          * @brief Gets the height of the control.
          */
         virtual uint8_t height() = 0;
+
+        /**
+         * @brief Determines if the control has changes
+         */
+        virtual bool has_changes() = 0;
 
         /**
          * @brief Copies the value of the control to a destination
@@ -72,6 +77,14 @@ class IBase
          */
         virtual void process_touch(uint16_t x, uint16_t y) = 0;
 
+        /**
+         * @brief Processes the wheel movement. Only implement this for controls that can respond to wheel 
+         * movemenet
+         * 
+         * @param direction - the direction of move 
+         * @param steps - the number of steps taken
+         */
+        virtual void process_wheel_movement(int direction, int steps) {}
 
         /**
          * @brief Gets the name of the control, representing the variable the control is bound to.
@@ -85,6 +98,13 @@ class IBase
          * @param src - pointer to the control raising the event
          */
         std::function <void(IBase *src)>on_change = nullptr;
+
+        /**
+         * @brief Delegate to call when the control takes the focus
+         * @param src - pointer to the control raising the event
+         * @param status - The control status message code used for the status bar. 
+         */
+        std::function <void(IBase *src, uint8_t status)>on_focus = nullptr;
 
     protected:
     
@@ -128,11 +148,6 @@ class IControl : public IBase
          * @brief Loads the control and initializes the view state
          */
         virtual void load(T value) = 0;
-
-        /**
-         * @brief Determines if the control has changes
-         */
-        virtual bool has_changes() = 0;
 
         /**
          * @brief Gets the underlying data value 
