@@ -94,7 +94,8 @@ void Controller::begin()
     }
 
     this->_inputs->register_wheel_callback([this](int dir, int steps){ _motion->process_wheel_movement(dir, steps);});
-    this->_inputs->register_wheel_callback([this](int dir, int steps){ _display->process_wheel_movement(dir, steps);});
+    this->_inputs->register_wheel_callback([this](int dir, int steps){ _display->process_alerts_wheel_movement(dir, steps);});
+    this->_inputs->register_wheel_callback([this](int dir, int steps){ _display->process_settings_wheel_movement(dir, steps);});
     this->_inputs->start_monitoring();
 
     this->_motion->set_blade_safety_stop_callback([this](){ 

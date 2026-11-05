@@ -8,7 +8,9 @@
 #include "src/display/display.h"
 #include "src/display/control/control.h"
 
-#define CHKBOX_HEIGHT 10
+#define CHKBOX_HEIGHT 20
+#define CHK_OFFSET 3
+#define CHK_PADDING 5
 
 class Checkbox : public IControl<bool>
 {
@@ -52,20 +54,27 @@ class Checkbox : public IControl<bool>
          */
         void process_touch(uint16_t x, uint16_t y) override;
 
-
+        /**
+         * @brief Determines if the control has changes
+         */
         bool has_changes() override { return _has_changes; }
+
+        /**
+         * @brief Gets the underlying data value 
+         */
         bool value() override { return _value; }
-        uint8_t height() override { return CHKBOX_HEIGHT; }
+
+        /**
+         * @brief Gets the height of the control.
+         */
+        uint8_t height() override { return (_y2 - _y1) > (CHKBOX_HEIGHT + CHK_PADDING) ? (_y2 - _y1) : (CHKBOX_HEIGHT + CHK_PADDING); }
 
     private:
         bool _value = false;
         bool _has_changes = false;
 
-        uint8_t volatile_x1 = 0;
-        uint8_t volatile_y1 = 0;
-        uint8_t volatile_x2 = 0;
-        uint8_t volatile_y2 = 0;
-
+        uint8_t volatile_x = 0;
+        uint8_t volatile_y = 0;
 };
 
 #endif // _CHECKBOX_H_

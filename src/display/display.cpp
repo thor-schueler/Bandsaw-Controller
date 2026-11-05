@@ -42,7 +42,10 @@ touch_area_t settings_touch_areas[] = {
   { 88, 95, 343, 265, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 99, true }, 
   { 105, 105, 165, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 3, true }, 
   { 190, 105, 250, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 4, true }, 
-  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true }
+  { 275, 105, 335, 165, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 5, true }, 
+  { 105, 180, 165, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 6, false },
+  { 190, 180, 250, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 7, false },
+  { 275, 180, 335, 240, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, NULL, 8, false }
 };
 
 touch_area_t ems_touch_areas[] = {
@@ -261,7 +264,7 @@ void Display::begin() {
         .callback = [](void* arg)
         {
             Display* _this = static_cast<Display*>(arg);
-            _this->_settings_status = 0x00;
+            _this->_settings_status &= 0xFE;
         },
         .arg = this,
         .dispatch_method = ESP_TIMER_TASK,

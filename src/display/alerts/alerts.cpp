@@ -208,13 +208,20 @@ void Display::clear_alerts()
     {
         LGFX_Sprite controls(this);
         Dialog d(this);
-        if(d.show("Clear and discard all alerts?"))
-        {
-            memset(_alerts, 0, sizeof(_alerts));
-            _has_alerts = false;
-            _count = 0;
-            _start = 0;
-            _index = 0;
+        if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
+        { 
+            // we need to get a semaphore here because dialog accesses the SPI infrastructure
+            // independent of display and while dialog as its own mutex management, we need to
+            // ensure that no other process can grab the display mutex while we show the dialog....
+            if(d.show("Clear and discard all alerts?"))
+            {
+                memset(_alerts, 0, sizeof(_alerts));
+                _has_alerts = false;
+                _count = 0;
+                _start = 0;
+                _index = 0;
+            }
+            xSemaphoreGive(this->_display_mutex);
         }
         this->draw_canvas();
         this->set_workarea_title(alerts_title, alerts_title_size, "");
@@ -379,11 +386,11 @@ String Display::truncate_string(lgfx::LGFX_Sprite &sprite, const char* text, int
 }
 
 /**
- * @brief Processes wheel movement events and takes the appropriate actions depending on the display state.
+ * @brief Processes wheel movement events int he alerts state.
  * @param direction - the direction of the wheel movement.
  * @param steps - the number of steps moved.
  */
-void Display::process_wheel_movement(int direction, int steps) 
+void Display::process_alerts_wheel_movement(int direction, int steps) 
 { 
     if(this->_screen == SCREENS::ALERTS) 
     {

@@ -5,6 +5,7 @@
 #include "src/display/display.h"
 #include "src/display/control/control.h"
 #include "src/display/checkbox/checkbox.h"
+#include "src/display/number/number.h"
 #include "src/inputs/inputs.h"
 #include "src/config/config.h"
 #include "src/display/dialog/dialog.h"
@@ -26,7 +27,7 @@ std::array<IBase*, 10> __controls {};
 std::array<setting_screen_t, 6> __screens = {{    
     { 3, SETTING_SCREENS::GENERAL, "General", settings_general, 0, 0, Config::General(), settings_variant_t(Config::General()), general_fields, std::size(general_fields), nullptr, nullptr},
     { 4, SETTING_SCREENS::JOBS, "Jobs", settings_jobs, 0, 1, Config::Jobs(), settings_variant_t(Config::Jobs()), jobs_fields, std::size(jobs_fields), nullptr, nullptr},
-    { 5, SETTING_SCREENS::TIMEOUTS, "Timeouts", settings_timeouts, 1, 2, Config::Timeouts(), settings_variant_t(Config::Timeouts()), timeout_fields, std::size(timeout_fields), nullptr, nullptr},
+    { 5, SETTING_SCREENS::TIMEOUTS, "Timeouts", settings_timeouts, 0, 2, Config::Timeouts(), settings_variant_t(Config::Timeouts()), timeout_fields, std::size(timeout_fields), nullptr, nullptr},
     { 6, SETTING_SCREENS::INVALID, "", nullptr, 0, 0, dummy, dummy, nullptr, 0, nullptr, nullptr},
     { 7, SETTING_SCREENS::INVALID, "", nullptr, 0, 0, dummy, dummy, nullptr, 0, nullptr, nullptr},
     { 8, SETTING_SCREENS::INVALID, "", nullptr, 0, 0, dummy, dummy, nullptr, 0, nullptr, nullptr}
@@ -34,6 +35,7 @@ std::array<setting_screen_t, 6> __screens = {{
 setting_screens_t __current_screen = SETTING_SCREENS::INVALID;
 bool __needs_saving = false;
 LGFX_Sprite *__s = nullptr;
+IBase* __focus_control = nullptr;
 
 /**
  * @brief Local helper to replace the underscores in a string with spaces and to capitalize each word
@@ -85,41 +87,11 @@ void Display::toggle_settings(bool force_on)
 
         if(__current_screen == SETTING_SCREENS::INVALID && !__needs_saving)
         {
-            //Config::print();
             for(setting_screen_t& _s: __screens)
             {
                 switch(_s.section)
                 {
-                    case SETTING_SCREENS::GENERAL: 
-                        _s.new_settings = settings_variant_t(Config::General()); 
-                        //Logger.Info("General Copy"); 
-                        //for (size_t i=0; i < _s.fields_size; ++i)
-                        //{
-                        //    const field_info_t field = _s.fields[i];
-                        //    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&_s.new_settings) + field.offset;
-                        //    switch(field.type)
-                        //    {
-                        //        case field_type_t::bool_t:
-                        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
-                        //            break;
-                        //        case field_type_t::uint8_t:
-                        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint8_t*>(ptr));
-                        //            break; 
-                        //        case field_type_t::uint16_t:
-                        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint16_t*>(ptr));
-                        //            break;     
-                        //        case field_type_t::uint32_t:
-                        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint32_t*>(ptr));
-                        //            break;            
-                        //        case field_type_t::float_t:
-                        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const float*>(ptr));
-                        //            break;
-                        //        default:
-                        //            Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
-                        //    }
-                        //}
-                        //Logger.Info("General Done"); 
-                        break;
+                    case SETTING_SCREENS::GENERAL: _s.new_settings = settings_variant_t(Config::General()); break;
                     case SETTING_SCREENS::JOBS: _s.new_settings = settings_variant_t(Config::Jobs()); break;
                     case SETTING_SCREENS::TIMEOUTS: _s.new_settings = settings_variant_t(Config::Timeouts()); break;
                     default:
@@ -133,14 +105,32 @@ void Display::toggle_settings(bool force_on)
         {
             Dialog d(this);
             Logger.Info("Entering Dialog");
-            if(d.show("Discard changes and exit?"))
+
+            bool diag_res = false;
+            if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {
+                // we need to get a semaphore here because dialog accesses the SPI infrastructure
+                // independent of display and while dialog as its own mutex management, we need to
+                // ensure that no other process can grab the display mutex while we show the dialog.... 
+                diag_res = d.show("Discard changes and exit?");
+                xSemaphoreGive(this->_display_mutex);
+            }
+
+            if(diag_res)
+            {
+                if(__s != nullptr)
+                { 
+                    if(__s->getBuffer() != nullptr) __s->deleteSprite();
+                    delete __s;
+                    __s = nullptr;
+                }
                 Logger.Info("Dialog done - proceed");
                 _screen = SCREENS::MAIN;
                 this->draw_canvas();
                 this->resume_tasks();
                     // we are on the main settings screen. 
                     // return to the main screen
+
             }
             else
             {
@@ -176,6 +166,7 @@ void Display::draw_settings_canvas()
     section.createSprite(59,59);
 
     // ensure previous controls are deleted if necessary
+    __focus_control = nullptr;
     for(uint8_t i=0; i<__controls.size(); i++) if(__controls[i] != nullptr) { delete __controls[i]; __controls[i] = nullptr; } 
 
     for (const auto& s : __screens) 
@@ -193,6 +184,7 @@ void Display::draw_settings_canvas()
         }
     }
     section.deleteSprite();
+    this->_settings_status = 0x0;
 }
 
 /**
@@ -204,6 +196,7 @@ void Display::draw_settings_canvas()
  */
 void Display::draw_settings_detail(uint8_t id, const char*)
 {
+    this->_settings_status = 0x0;
     setting_screen_t *ps = nullptr;
     for(auto &s : __screens) if(s.id == id) { ps = &s; break; }
     __current_screen = ps->section;
@@ -213,65 +206,7 @@ void Display::draw_settings_detail(uint8_t id, const char*)
     const field_info_t* fields = ps->fields;
     const size_t size = ps->fields_size; 
 
-    //Logger.Info("before");
-    //for (size_t i=0; i < size; ++i)
-    //{
-    //    const field_info_t field = fields[i];
-    //    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&(ps->new_settings)) + field.offset;
-    //    switch(field.type)
-    //    {
-    //        case field_type_t::bool_t:
-    //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
-    //            break;
-    //        case field_type_t::uint8_t:
-    //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint8_t*>(ptr));
-    //            break; 
-    //        case field_type_t::uint16_t:
-    //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint16_t*>(ptr));
-    //            break;     
-    //        case field_type_t::uint32_t:
-    //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint32_t*>(ptr));
-    //            break;            
-    //        case field_type_t::float_t:
-    //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const float*>(ptr));
-    //            break;
-    //        default:
-    //            Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
-    //    }
-    //}
-    //Logger.Info("before done");
-
-    std::visit([&](auto& s)
-    {
-        //Logger.Info("inside");
-        //for (size_t i=0; i < size; ++i)
-        //{
-        //    const field_info_t field = fields[i];
-        //    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&s) + field.offset;
-        //    switch(field.type)
-        //    {
-        //        case field_type_t::bool_t:
-        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
-        //            break;
-        //        case field_type_t::uint8_t:
-        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint8_t*>(ptr));
-        //            break; 
-        //        case field_type_t::uint16_t:
-        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint16_t*>(ptr));
-        //            break;     
-        //        case field_type_t::uint32_t:
-        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint32_t*>(ptr));
-        //            break;            
-        //        case field_type_t::float_t:
-        //            Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const float*>(ptr));
-        //            break;
-        //        default:
-        //            Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
-        //    }
-        //}
-        //Logger.Info("inside done");
-        this->draw_settings(s, fields, size);
-    }, ps->new_settings);
+    std::visit([&](auto& s) { this->draw_settings(s, fields, size); }, ps->new_settings);
     this->set_workarea_title(settings_title, settings_title_size, " - " + String(ps->name));
 }
 
@@ -295,34 +230,39 @@ void Display::draw_settings(const settings_t& value, const field_info_t* fields,
 
     for (size_t i=0; i < fields_size; ++i)
     {
+        bool should_initialize = false;
         const field_info_t field = fields[i];
         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&value) + field.offset;
+        if(__controls[i] == nullptr) should_initialize = true;
         switch(field.type)
         {
             case field_type_t::bool_t:
-                if(__controls[i] == nullptr)
-                { 
-                    __controls[i] = new Checkbox(field.name, prettify(field.name));
-                    __controls[i]->copy_from(ptr);
-                    __controls[i]->on_change = std::bind(&Display::on_control_change, this, std::placeholders::_1);
-                }
-                y += __controls[i]->show(*__s, 0, y, HOMING_W);
-                //Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const bool*>(ptr) ? "true" : "false");
+                if(__controls[i] == nullptr) __controls[i] = new Checkbox(field.name, prettify(field.name));
                 break;
             case field_type_t::uint8_t:
-                //Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint8_t*>(ptr));
+                if(__controls[i] == nullptr) __controls[i] = new Number<uint8_t>(field.name, prettify(field.name));
                 break; 
             case field_type_t::uint16_t:
-                //Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint16_t*>(ptr));
+                if(__controls[i] == nullptr) __controls[i] = new Number<uint16_t>(field.name, prettify(field.name));
                 break;     
             case field_type_t::uint32_t:
-                //Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const uint32_t*>(ptr));
-                break;            
+                if(__controls[i] == nullptr) __controls[i] = new Number<uint32_t>(field.name, prettify(field.name));
+                break;           
             case field_type_t::float_t:
                 //Logger.Info_f(field.format_string, field.name, *reinterpret_cast<const float*>(ptr));
                 break;
             default:
                 Logger.Info_f(F("   %s: %u (unknown type, assuming one byte value)"), field.name, *ptr);
+        }
+        if(__controls[i] != nullptr)
+        {
+            if(should_initialize)
+            {
+                __controls[i]->copy_from(ptr);
+                __controls[i]->on_change = std::bind(&Display::on_control_change, this, std::placeholders::_1);
+                __controls[i]->on_focus = std::bind(&Display::on_focus, this, std::placeholders::_1, std::placeholders::_2);
+            }
+            y += __controls[i]->show(*__s, 0, y, HOMING_W);  
         }
     }
 
@@ -346,7 +286,6 @@ std::array<setting_screen_t, 6>& Display::get_settings_screens() { return __scre
  * @return settings_screen_t& 
  */
 const setting_screens_t& Display::get_current_settings_screen() { return __current_screen; }
-
 
 /**
  * @brief Save the settings to NVMS
@@ -403,6 +342,8 @@ void Display::process_settings_screen_touch(uint16_t x, uint16_t y)
     // which control to dispatch the touch to. We need to adjust the passed through
     // coordinates by SETTINGS_X and SETTINGS_Y since the controls operate relative to that
     // coordinate. 
+    this->_settings_status &= 0x0F;     // retain the lower 4 bits. Upper 4 bits are control messages
+    __focus_control = nullptr;
     for(auto c : __controls) if(c != nullptr) c->process_touch(x-SETTINGS_X, y-SETTINGS_Y);  
 }
 
@@ -421,6 +362,10 @@ void Display::on_control_change(IBase* src)
     const field_info_t* fields = ps->fields;
     const size_t size = ps->fields_size; 
 
+    Checkbox* __c = nullptr;
+    Number<uint8_t>* __n8 = nullptr;
+    Number<uint16_t>* __n16 = nullptr;
+    Number<uint32_t>* __n32 = nullptr;
     std::visit([&](auto& settings)
     {
         for (size_t i=0; i < size; ++i)
@@ -432,12 +377,39 @@ void Display::on_control_change(IBase* src)
             switch(field.type)
             {
                 case field_type_t::bool_t:
-                    Checkbox* c = static_cast<Checkbox*>(src);
-                    if(c->has_changes())
+                    __c = static_cast<Checkbox*>(src);
+                    if(__c->has_changes())
                     {
-                        *reinterpret_cast<bool*>(ptr) = c->value();
-                        c->redraw_volatiles(*__s); 
+                        *reinterpret_cast<bool*>(ptr) = __c->value();
+                        __c->redraw_volatiles(*__s); 
                         __needs_saving = true; 
+                    }
+                    break;
+                case field_type_t::uint8_t:
+                    __n8 = static_cast<Number<uint8_t>*>(src);
+                    if(__n8->has_changes())
+                    {
+                        *reinterpret_cast<uint8_t*>(ptr) = __n8->value();
+                        __n8->redraw_volatiles(*__s);
+                        __needs_saving = true;
+                    }
+                    break;
+                case field_type_t::uint16_t:
+                    __n16 = static_cast<Number<uint16_t>*>(src);
+                    if(__n16->has_changes())
+                    {
+                        *reinterpret_cast<uint16_t*>(ptr) = __n16->value();
+                        __n16->redraw_volatiles(*__s);
+                        __needs_saving = true;
+                    }
+                    break;
+                case field_type_t::uint32_t:
+                    __n32 = static_cast<Number<uint32_t>*>(src);
+                    if(__n32->has_changes())
+                    {
+                        *reinterpret_cast<uint32_t*>(ptr) = __n32->value();
+                        __n32->redraw_volatiles(*__s);
+                        __needs_saving = true;
                     }
                     break;
             }
@@ -450,4 +422,32 @@ void Display::on_control_change(IBase* src)
         __s->pushSprite(SETTINGS_X, SETTINGS_Y);
         xSemaphoreGive(this->_display_mutex);
     }    
+}
+
+/**
+ * @brief Callback called when a control takes the focus
+ * 
+ * @param src - The control raising the event.
+ * @param status - The control status message code used for the status bar. 
+ */
+void Display::on_focus(IBase* src, uint8_t status) 
+{ 
+    __focus_control = src; 
+    this->_settings_status |= status;
+}
+
+/**
+ * @brief Processes wheel movement events in the settings state.
+ * @param direction - the direction of the wheel movement.
+ * @param steps - the number of steps moved.
+ */
+void Display::process_settings_wheel_movement(int direction, int steps) 
+{ 
+    if(this->_screen == SCREENS::SETTINGS) 
+    {
+        if(__focus_control != nullptr) 
+        {
+            __focus_control->process_wheel_movement(direction, steps);
+        }
+    }
 }
