@@ -65,7 +65,7 @@ String prettify(String s)
 void Display::toggle_settings(bool force_on)
 {
     
-    if(this->_screen != SCREENS::SETTINGS || (this->_screen == SCREENS::SETTINGS && __current_screen != SETTING_SCREENS::INVALID) || force_on)
+    if(this->_screen != SCREENS::SETTINGS || (this->_screen == SCREENS::SETTINGS && __current_screen != SETTING_SCREENS::INVALID) || force_on == true)
     {
         LGFX_Sprite controls(this);
         _screen = SCREENS::SETTINGS;
@@ -101,11 +101,10 @@ void Display::toggle_settings(bool force_on)
         }
     }
     else
-    {   if(__needs_saving)
+    {   
+        if(__needs_saving)
         {
             Dialog d(this);
-            Logger.Info("Entering Dialog");
-
             bool diag_res = false;
             if (xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
             {
@@ -124,17 +123,16 @@ void Display::toggle_settings(bool force_on)
                     delete __s;
                     __s = nullptr;
                 }
-                Logger.Info("Dialog done - proceed");
+                 __needs_saving = false;
                 _screen = SCREENS::MAIN;
                 this->draw_canvas();
                 this->resume_tasks();
                     // we are on the main settings screen. 
                     // return to the main screen
-
+                    
             }
             else
             {
-                Logger.Info("Dialog done - cancel");
                 this->toggle_settings(true);
             }
         }
@@ -195,7 +193,7 @@ void Display::draw_settings_canvas()
  * @remarks - the function signature is a delegate for the input watcher
  */
 void Display::draw_settings_detail(uint8_t id, const char*)
-{
+{  
     this->_settings_status = 0x0;
     setting_screen_t *ps = nullptr;
     for(auto &s : __screens) if(s.id == id) { ps = &s; break; }
@@ -297,8 +295,6 @@ const setting_screens_t& Display::get_current_settings_screen() { return __curre
 void Display::save_settings(uint8_t gpio, const char*)
 {
     if(!__needs_saving) return;
-
-    Logger.Info("Save settings");
     for(auto &s : __screens) 
     {
         std::visit([&](auto& ns)
@@ -316,6 +312,7 @@ void Display::save_settings(uint8_t gpio, const char*)
     __needs_saving = false;
     this->_settings_status |= 0x01;
     esp_timer_start_once(this->status_timer, STATUSTIMEOUT);
+    Logger.Info("Settings have been saved.");
 }
 
 /**
@@ -327,8 +324,31 @@ void Display::save_settings(uint8_t gpio, const char*)
  */
 void Display::default_settings(uint8_t gpio, const char*)
 {
-    Logger.Info("Restore Defaults");
-    ESP.restart();
+    for(auto &s : __screens) 
+    {
+        settings_t* def = nullptr;
+        if(s.section == SETTING_SCREENS::GENERAL) def = new general_settings_t();
+        if(s.section == SETTING_SCREENS::JOBS) def = new job_settings_t();
+        if(s.section == SETTING_SCREENS::TIMEOUTS) def = new timeout_settings_t();
+        if(def != nullptr)
+        {
+            std::visit([&](auto& ns)
+            {
+                for (size_t i=0; i < s.fields_size; ++i)
+                {
+                    const field_info_t field = s.fields[i];
+                    uint8_t* ptr_dst = reinterpret_cast<uint8_t*>(&ns) + field.offset;
+                    uint8_t* ptr_src = reinterpret_cast<uint8_t*>(def) + field.offset;
+                    memcpy(ptr_dst, ptr_src, field.size);
+                }
+            }, s.new_settings);
+            delete def;
+        }
+    }
+    __needs_saving = true;
+    this->_settings_status |= 0x02;
+    esp_timer_start_once(this->status_timer, STATUSTIMEOUT);
+    Logger.Info("Default settings have been restored.");
 }
 
 /**
@@ -362,10 +382,6 @@ void Display::on_control_change(IBase* src)
     const field_info_t* fields = ps->fields;
     const size_t size = ps->fields_size; 
 
-    Checkbox* __c = nullptr;
-    Number<uint8_t>* __n8 = nullptr;
-    Number<uint16_t>* __n16 = nullptr;
-    Number<uint32_t>* __n32 = nullptr;
     std::visit([&](auto& settings)
     {
         for (size_t i=0; i < size; ++i)
@@ -376,47 +392,19 @@ void Display::on_control_change(IBase* src)
             uint8_t* ptr = reinterpret_cast<uint8_t*>(&settings) + field.offset;
             switch(field.type)
             {
-                case field_type_t::bool_t:
-                    __c = static_cast<Checkbox*>(src);
-                    if(__c->has_changes())
-                    {
-                        *reinterpret_cast<bool*>(ptr) = __c->value();
-                        __c->redraw_volatiles(*__s); 
-                        __needs_saving = true; 
-                    }
-                    break;
-                case field_type_t::uint8_t:
-                    __n8 = static_cast<Number<uint8_t>*>(src);
-                    if(__n8->has_changes())
-                    {
-                        *reinterpret_cast<uint8_t*>(ptr) = __n8->value();
-                        __n8->redraw_volatiles(*__s);
-                        __needs_saving = true;
-                    }
-                    break;
-                case field_type_t::uint16_t:
-                    __n16 = static_cast<Number<uint16_t>*>(src);
-                    if(__n16->has_changes())
-                    {
-                        *reinterpret_cast<uint16_t*>(ptr) = __n16->value();
-                        __n16->redraw_volatiles(*__s);
-                        __needs_saving = true;
-                    }
-                    break;
-                case field_type_t::uint32_t:
-                    __n32 = static_cast<Number<uint32_t>*>(src);
-                    if(__n32->has_changes())
-                    {
-                        *reinterpret_cast<uint32_t*>(ptr) = __n32->value();
-                        __n32->redraw_volatiles(*__s);
-                        __needs_saving = true;
-                    }
-                    break;
+                case field_type_t::bool_t: if(src->has_changes()) *reinterpret_cast<bool*>(ptr) = (static_cast<Checkbox*>(src))->value(); break;
+                case field_type_t::uint8_t: if(src->has_changes()) *reinterpret_cast<uint8_t*>(ptr) = (static_cast<Number<uint8_t>*>(src))->value(); break;
+                case field_type_t::uint16_t: if(src->has_changes()) *reinterpret_cast<uint16_t*>(ptr) = (static_cast<Number<uint16_t>*>(src))->value(); break;
+                case field_type_t::uint32_t: if(src->has_changes()) *reinterpret_cast<uint32_t*>(ptr) = (static_cast<Number<uint32_t>*>(src))->value(); break;
+            }
+            if(src->has_changes()) 
+            {
+                __needs_saving = true;
+                src->redraw_volatiles(*__s);
             }
         }
     },
     ps->new_settings);
-    
     if(xSemaphoreTake(this->_display_mutex, portMAX_DELAY) == pdTRUE)
     { 
         __s->pushSprite(SETTINGS_X, SETTINGS_Y);

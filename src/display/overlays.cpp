@@ -482,7 +482,8 @@ void Display::status_bar_runner(void *args)
             sb.setFont(&fonts::Font2);
 
             // put this processing in ascending order. Lower status values take priority
-            if((_this->_settings_status & 0x0F) == 0x01) sb.drawString(F("Settings have been saved"), 0, 0); // display config saved status
+            if((_this->_settings_status & 0x0F) == 0x02) sb.drawString(F("Defaults have been restored. Save is required."), 0, 0); // display defaults restored message
+            else if((_this->_settings_status & 0x0F) == 0x01) sb.drawString(F("Settings have been saved"), 0, 0); // display config saved message
             else if((_this->_settings_status & 0xF0) == 0x10) sb.drawString(F("Use the wheel to increment/decrement the value"), 0, 0);
 
             if (xSemaphoreTake(_this->_display_mutex, portMAX_DELAY) == pdTRUE)

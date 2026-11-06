@@ -264,7 +264,7 @@ void Display::begin() {
         .callback = [](void* arg)
         {
             Display* _this = static_cast<Display*>(arg);
-            _this->_settings_status &= 0xFE;
+            _this->_settings_status &= 0xF0;
         },
         .arg = this,
         .dispatch_method = ESP_TIMER_TASK,
